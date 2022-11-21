@@ -1,0 +1,3 @@
+<launch>
+    <node name="rosuam_gui" pkg="rosuam" type="rosuam_node" output="screen"/>
+</launch>

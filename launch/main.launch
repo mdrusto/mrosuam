@@ -1,0 +1,35 @@
+<launch>
+	
+	<machine name="gcs" address="baela" default="true"/>
+	<machine name="obc" address="halaena"/>
+	
+	<node name="gui" type="m-rosuam_gui" pkg="m-rosuam"/>
+	
+	<node name="gcs_resource_monitor" type="m-rosuam_resource_monitor" pkg="m-rosuam" output="screen">
+		<param name="comp_name" value="gcs"/>
+	</node>
+	
+	<node name="obc_resource_monitor" type="m-rosuam_resource_monitor" pkg="m-rosuam" machine="obc" output="screen">
+		<param name="comp_name" value="obc"/>
+	</node>
+	
+	<!--
+	<node name="camera" type="raspicam_node" pkg="raspicam_node" machine="obc">
+		<param name="private_topics" value="true"/>
+		
+		<param name="camera_frame_id" value="raspicam"/>
+		<param name="enable_raw" value="false"/>
+		<param name="enable_imv" value="false"/>
+		<param name="camera_id" value="0"/>
+
+		<param name="camera_info_url" value="package://raspicam_node/camera_info/camerav2_410x308.yaml"/>
+		<param name="camera_name" value="camerav2_410x308"/>
+		<param name="width" value="410"/>
+		<param name="height" value="308"/>
+
+		<param name="framerate" value="30"/>
+		<param name="exposure_mode" value="antishake"/>
+		<param name="shutter_speed" value="0"/>
+	</node>
+	-->
+</launch>

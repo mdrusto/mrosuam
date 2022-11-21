@@ -1,0 +1,9 @@
+[submodule "extern/imgui"]
+	path = extern/imgui
+	url = https://github.com/ocornut/imgui
+[submodule "extern/implot"]
+	path = extern/implot
+	url = https://github.com/epezent/implot
+[submodule "extern/jpeg-compressor"]
+	path = extern/jpeg-compressor
+	url = https://github.com/richgel999/jpeg-compressor
