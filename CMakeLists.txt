@@ -1,6 +1,17 @@
 cmake_minimum_required(VERSION 3.0.2)
 project(m-rosuam)
 
+# Find which machine this is - MACHINE_OBC is true if this is the on-board computer
+message("Hostname is: $ENV{ROS_HOSTNAME}")
+if ($ENV{ROS_HOSTNAME} STREQUAL "halaena")
+  set(MACHINE_OBC 1)
+elseif($ENV{ROS_HOSTNAME} STREQUAL "baela")
+  set(MACHINE_OBC 0)
+else()
+  message(FATAL_ERROR "Hostname wasn't halaena or baela")
+endif()
+
+
 ## Compile as C++11, supported in ROS Kinetic and newer
 # add_compile_options(-std=c++11)
 
@@ -16,9 +27,14 @@ find_package(catkin REQUIRED COMPONENTS
 
 roslaunch_add_file_check(launch)
 
-add_subdirectory(extern/imgui)
-add_subdirectory(extern/implot)
-add_subdirectory(extern/jpeg-compressor)
+if (MACHINE_OBC)
+  message("Machine is OBC")
+else()
+  message("Machine is GCC")
+  add_subdirectory(extern/imgui)
+  add_subdirectory(extern/implot)
+  add_subdirectory(extern/jpeg-compressor)
+endif()
 
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
@@ -137,7 +153,9 @@ include_directories(
 ## either from message generation or dynamic reconfigure
 # add_dependencies(${PROJECT_NAME} ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
-add_subdirectory(src/gui)
+if(NOT MACHINE_OBC)
+  add_subdirectory(src/gui)
+endif()
 add_subdirectory(src/resource_monitor)
 
 #############
