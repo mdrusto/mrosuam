@@ -156,7 +156,7 @@ namespace m_rosuam::ResourceMonitor
 			virtualMemUsedMsg.data = virtualMemUsed;
 			
 			virtualMemUsedPublisher.publish<std_msgs::UInt64>(virtualMemUsedMsg);
-			ROS_INFO("Virtual memory used: %fMB / %dMB", (float)(virtualMemUsed / 1e6), (int)(totalVirtualMem / 1e6));
+			//ROS_INFO("Virtual memory used: %fMB / %dMB", (float)(virtualMemUsed / 1e6), (int)(totalVirtualMem / 1e6));
 			
 			//ROS_INFO("Resource monitor iteration time: %f ms", frameDurationMillis);
 			
