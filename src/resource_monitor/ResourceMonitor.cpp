@@ -22,8 +22,9 @@ namespace m_rosuam::ResourceMonitor
 		ros::init(argc, argv, "resource_monitor");
 		ros::NodeHandle nodeHandle;
 		
-		char* hostname_char;
-		ROS_ASSERT(gethostname(hostname_char, 20));
+		const int MAX_CHARS = 20;
+		char hostname_char[MAX_CHARS];
+		ROS_ASSERT(gethostname(hostname_char, MAX_CHARS - 1) == 0);
 		std::string hostname(hostname_char);
 		
 		ros::Publisher cpuUserLoadPublisher = nodeHandle.advertise<std_msgs::Float64MultiArray>(
