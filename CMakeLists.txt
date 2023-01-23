@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.0.2)
-project(m-rosuam)
+project(mrosuam)
 
 # Find which machine this is - MACHINE_OBC is true if this is the on-board computer
 message("Hostname is: $ENV{ROS_HOSTNAME}")

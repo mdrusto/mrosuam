@@ -3,15 +3,17 @@
 	<machine name="gcs" address="baela" default="true"/>
 	<machine name="obc" address="halaena"/>
 	
-	<node name="gui" type="m-rosuam_gui" pkg="m-rosuam"/>
+	<node name="gui" type="mrosuam_gui" pkg="m-rosuam"/>
 	
-	<node name="gcs_resource_monitor" type="m-rosuam_resource_monitor" pkg="m-rosuam" output="screen">
+	<node name="gcs_resource_monitor" type="mrosuam_resource_monitor" pkg="mrosuam" output="screen">
 		<param name="comp_name" value="gcs"/>
 	</node>
 	
+	<!--
 	<node name="obc_resource_monitor" type="m-rosuam_resource_monitor" pkg="m-rosuam" machine="obc" output="screen">
 		<param name="comp_name" value="obc"/>
 	</node>
+	-->
 	
 	<!--
 	<node name="camera" type="raspicam_node" pkg="raspicam_node" machine="obc">
