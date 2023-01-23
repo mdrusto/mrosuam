@@ -27,16 +27,22 @@ namespace m_rosuam::ResourceMonitor
 		ROS_ASSERT(gethostname(hostname_char, MAX_CHARS - 1) == 0);
 		std::string hostname(hostname_char);
 		
-		ros::Publisher cpuUserLoadPublisher = nodeHandle.advertise<std_msgs::Float64MultiArray>(
-				"/m_rosuam/resources/" + hostname + "/raw/cpu_user_load", 100);
-		ros::Publisher cpuSystemLoadPublisher = nodeHandle.advertise<std_msgs::Float64MultiArray>(
-				"/m_rosuam/resources/" + hostname + "/raw/cpu_system_load", 100);
-		ros::Publisher averagedCpuUserLoadPublisher = nodeHandle.advertise<std_msgs::Float64MultiArray>(
-				"/m-rosuam/resources/" + hostname + "/filtered/cpu_user_load", 100);
-		ros::Publisher averagedCpuSystemLoadPublisher = nodeHandle.advertise<std_msgs::Float64MultiArray>(
-				"/m-rosuam/resources/" + hostname + "/filtered/cpu_system_load", 100);
+		std::string machineID;
+		if (hostname == "baela")
+			machineID = "gcs";
+		else
+			machineID = "obc";
 		
-		ros::Publisher virtualMemUsedPublisher = nodeHandle.advertise<std_msgs::UInt64>("m_rosuam/resources/" + hostname + "/virtual_mem_used", 100);
+		ros::Publisher cpuUserLoadPublisher = nodeHandle.advertise<std_msgs::Float64MultiArray>(
+				"/mrosuam/resources/" + machineID + "/raw/cpu_user_load", 100);
+		ros::Publisher cpuSystemLoadPublisher = nodeHandle.advertise<std_msgs::Float64MultiArray>(
+				"/mrosuam/resources/" + machineID + "/raw/cpu_system_load", 100);
+		ros::Publisher averagedCpuUserLoadPublisher = nodeHandle.advertise<std_msgs::Float64MultiArray>(
+				"/mrosuam/resources/" + machineID + "/filtered/cpu_user_load", 100);
+		ros::Publisher averagedCpuSystemLoadPublisher = nodeHandle.advertise<std_msgs::Float64MultiArray>(
+				"/mrosuam/resources/" + machineID + "/filtered/cpu_system_load", 100);
+		
+		ros::Publisher virtualMemUsedPublisher = nodeHandle.advertise<std_msgs::UInt64>("mrosuam/resources/" + hostname + "/virtual_mem_used", 100);
 		
 		//ros::MultiThreadedSpinner spinner;
 		ros::SingleThreadedSpinner spinner;

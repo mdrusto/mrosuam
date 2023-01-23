@@ -1,4 +1,4 @@
-#include <m-rosuam/gui/AtomicVariable.h>
+#include "mrosuam/gui/AtomicVariable.h"
 
 #include <chrono>
 #include <mutex>
@@ -248,13 +248,13 @@ namespace m_rosuam::gui {
                 10, cameraCallback);
         
         ros::Subscriber gcsCpuUserLoadSubscriber = 
-                nodeHandle.subscribe<std_msgs::Float64MultiArray>("/m_rosuam/resources/gcs/filtered/cpu_user_load", 10, userLoadCallback);
+                nodeHandle.subscribe<std_msgs::Float64MultiArray>("/mrosuam/resources/gcs/filtered/cpu_user_load", 10, userLoadCallback);
                 
         ros::Subscriber gcsCpuSystemLoadSubscriber = 
-                nodeHandle.subscribe<std_msgs::Float64MultiArray>("/m_rosuam/resources/gcs/filtered/cpu_system_load", 10, systemLoadCallback);
+                nodeHandle.subscribe<std_msgs::Float64MultiArray>("/mrosuam/resources/gcs/filtered/cpu_system_load", 10, systemLoadCallback);
         
         ros::Subscriber gcsMemUsedSubscriber = 
-                nodeHandle.subscribe<std_msgs::UInt64>("/m_rosuam/resources/gcs/virtual_mem_used", 10, memUsedCallback);
+                nodeHandle.subscribe<std_msgs::UInt64>("/mrosuam/resources/gcs/virtual_mem_used", 10, memUsedCallback);
         
         ros::AsyncSpinner spinner(4);
         
