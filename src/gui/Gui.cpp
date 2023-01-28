@@ -33,9 +33,10 @@ namespace m_rosuam::gui {
 
     AtomicVariable<mavros_msgs::State> currentState;
     
-    AtomicVariable<std::vector<double>> currentCPUUserLoad, currentCPUSystemLoad;
+    AtomicVariable<std::vector<double>> gcsCurrentCPUUserLoad, gcsCurrentCPUSystemLoad;
+    AtomicVariable<std::vector<double>> obcCurrentCPUUserLoad, obcCurrentCPUSystemLoad;
     
-    AtomicVariable<uint64_t> memUsed;
+    AtomicVariable<uint64_t> gcsMemUsed, obcMemUsed;
 
     AtomicVariable<sensor_msgs::CompressedImage> currentImage;
     std::mutex imageMutex;
@@ -56,21 +57,36 @@ namespace m_rosuam::gui {
         currentState = *state;
     }
     
-    void userLoadCallback(const std_msgs::Float64MultiArray::ConstPtr& ptr)
+    void gcsCPUUserLoadCallback(const std_msgs::Float64MultiArray::ConstPtr& ptr)
     {
-        currentCPUUserLoad = ptr->data;
+        gcsCurrentCPUUserLoad = ptr->data;
     }
     
-    void systemLoadCallback(const std_msgs::Float64MultiArray::ConstPtr& ptr)
+    void gcsSystemLoadCallback(const std_msgs::Float64MultiArray::ConstPtr& ptr)
     {
-        currentCPUSystemLoad = ptr->data;
+        gcsCurrentCPUSystemLoad = ptr->data;
     }
     
-    void memUsedCallback(const std_msgs::UInt64::ConstPtr& ptr)
+    void gcsMemUsedCallback(const std_msgs::UInt64::ConstPtr& ptr)
     {
-        memUsed = ptr->data;
+        gcsMemUsed = ptr->data;
     }
-
+    
+    void obcCPUUserLoadCallback(const std_msgs::Float64MultiArray::ConstPtr& ptr)
+    {
+        obcCurrentCPUUserLoad = ptr->data;
+    }
+    
+    void obcSystemLoadCallback(const std_msgs::Float64MultiArray::ConstPtr& ptr)
+    {
+        obcCurrentCPUSystemLoad = ptr->data;
+    }
+    
+    void obcMemUsedCallback(const std_msgs::UInt64::ConstPtr& ptr)
+    {
+        obcMemUsed = ptr->data;
+        numTimesSet++;
+    }
     void cameraCallback(const sensor_msgs::CompressedImage::ConstPtr& image)
     {
         imageMutex.lock();
@@ -248,25 +264,44 @@ namespace m_rosuam::gui {
                 10, cameraCallback);
         
         ros::Subscriber gcsCpuUserLoadSubscriber = 
-                nodeHandle.subscribe<std_msgs::Float64MultiArray>("/mrosuam/resources/gcs/filtered/cpu_user_load", 10, userLoadCallback);
+                nodeHandle.subscribe<std_msgs::Float64MultiArray>("/mrosuam/resources/gcs/filtered/cpu_user_load", 10, gcsCPUUserLoadCallback);
                 
         ros::Subscriber gcsCpuSystemLoadSubscriber = 
-                nodeHandle.subscribe<std_msgs::Float64MultiArray>("/mrosuam/resources/gcs/filtered/cpu_system_load", 10, systemLoadCallback);
+                nodeHandle.subscribe<std_msgs::Float64MultiArray>("/mrosuam/resources/gcs/filtered/cpu_system_load", 10, gcsSystemLoadCallback);
         
         ros::Subscriber gcsMemUsedSubscriber = 
-                nodeHandle.subscribe<std_msgs::UInt64>("/mrosuam/resources/gcs/virtual_mem_used", 10, memUsedCallback);
+                nodeHandle.subscribe<std_msgs::UInt64>("/mrosuam/resources/gcs/virtual_mem_used", 10, gcsMemUsedCallback);
+        
+        ros::Subscriber obcCpuUserLoadSubscriber = 
+                nodeHandle.subscribe<std_msgs::Float64MultiArray>("/mrosuam/resources/obc/filtered/cpu_user_load", 10, obcCPUUserLoadCallback);
+                
+        ros::Subscriber obcCpuSystemLoadSubscriber = 
+                nodeHandle.subscribe<std_msgs::Float64MultiArray>("/mrosuam/resources/obc/filtered/cpu_system_load", 10, obcSystemLoadCallback);
+        
+        ros::Subscriber obcMemUsedSubscriber = 
+                nodeHandle.subscribe<std_msgs::UInt64>("/mrosuam/resources/obc/virtual_mem_used", 10, obcMemUsedCallback);
+        
         
         ros::AsyncSpinner spinner(4);
         
         
         spinner.start();
         
-        struct sysinfo memInfo;
-        sysinfo(&memInfo);
+        struct sysinfo gcsMemInfo;
+        sysinfo(&gcsMemInfo);
         
-        uint64_t totalVirtualMem = memInfo.totalram;
-        totalVirtualMem += memInfo.totalswap;
-        totalVirtualMem += memInfo.mem_unit;
+        uint64_t gcsTotalVirtualMem = gcsMemInfo.totalram;
+        gcsTotalVirtualMem += gcsMemInfo.totalswap;
+        gcsTotalVirtualMem += gcsMemInfo.mem_unit;
+        
+        struct sysinfo obcMemInfo;
+        sysinfo(&obcMemInfo);
+        
+        uint64_t obcTotalVirtualMem = obcMemInfo.totalram;
+        obcTotalVirtualMem += obcMemInfo.totalswap;
+        obcTotalVirtualMem += obcMemInfo.mem_unit;
+        
+        // Main GUI loop
         
         while (!glfwWindowShouldClose(s_window))
         {
@@ -282,7 +317,7 @@ namespace m_rosuam::gui {
             
             imGuiBeginFrame();
             
-            ImGui::ShowDemoWindow();
+            //ImGui::ShowDemoWindow();
             
             ImGui::Begin("Variables");
             
@@ -325,124 +360,208 @@ namespace m_rosuam::gui {
             ImGui::Begin("Stats");
             int fps = 1000 / frameDurationMillis;
             ImGui::Text("Current frame time: %f ms (%d fps)", frameDurationMillis, fps);
-            std::vector<double> cpuLoad = currentCPUUserLoad.get();
-            for (int i = 0; i < 4 && numTimesSet; i++)
+            
+            ImGui::Separator();
+            
             {
-                ImGui::Text("CPU #%d user load: %f%%", i, cpuLoad[i] * 100);
-                ImGui::Text("CPU #%d system load: %f%%", i, cpuLoad[i] * 100);
+                
+                ImGui::Text("GCS Resources");
+                
+                std::vector<double> cpuLoad = gcsCurrentCPUUserLoad.get();
+                for (int i = 0; i < 4 && numTimesSet; i++)
+                {
+                    ImGui::Text("CPU #%d user load: %f%%", i, cpuLoad[i] * 100);
+                    ImGui::Text("CPU #%d system load: %f%%", i, cpuLoad[i] * 100);
+                }
+                ImGui::Text("Virtual memory used: %d MB / %d MB", (int)(gcsMemUsed.get() / 1e6), (int) (gcsTotalVirtualMem / 1e6));
+                
+                if (gcsMemUsed.get() / gcsTotalVirtualMem > 0.95)
+                {
+                    ROS_INFO("Virtual memory in use exceeded 95%%! Killing process.");
+                    return 1;
+                }
+                
+                static float t = 0.0f;
+                const static float HISTORY = 10.0f;
+                t += frameDurationMillis / 1e3f;
+                
+                // Laptop memory plot
+                
+                static ScrollingBuffer memScrollBuffer;
+                
+                memScrollBuffer.addPoint(t, gcsMemUsed.get() / 1e6f);
+                
+                if (ImPlot::BeginPlot("GCS Virtual Memory"))
+                {
+                    
+                    ImPlot::SetupAxes("Time (s)", "Memory", 
+                            ImPlotAxisFlags_NoLabel | ImPlotAxisFlags_NoTickLabels, 
+                            ImPlotAxisFlags_LockMin | ImPlotAxisFlags_LockMax);
+                    ImPlot::SetupAxisLimits(ImAxis_X1, t - HISTORY * 0.9f, t + HISTORY * 0.1f, ImGuiCond_Always);
+                    ImPlot::SetupAxisLimits(ImAxis_Y1, 0, gcsTotalVirtualMem / 1e6f, ImGuiCond_Always);
+                    
+                    ImPlot::PlotLine("CPU Usage", &memScrollBuffer.m_data[0].x, &memScrollBuffer.m_data[0].y, 
+                            memScrollBuffer.m_data.size(), 0, memScrollBuffer.m_offset, 2* sizeof(float));
+                    
+                    ImPlot::EndPlot();
+                }
+                
+                // Laptop CPU plots
+                
+                if (numTimesSet)
+                {
+                    ImVec2 plotSize(300, 200);
+                    
+                    ImPlotAxisFlags yAxisFlags = ImPlotAxisFlags_LockMin | ImPlotAxisFlags_LockMax;
+                    ImPlotAxisFlags xAxisFlags = ImPlotAxisFlags_NoTickLabels | ImPlotAxisFlags_NoLabel;
+                    ImPlotFlags plotFlags = ImPlotFlags_NoLegend;
+                    
+                    static ScrollingBuffer cpu1UsageScrollBuffer;
+                    
+                    cpu1UsageScrollBuffer.addPoint(t, cpuLoad[0] * 100);
+                    
+                    if (ImPlot::BeginPlot("GCS CPU 1 Usage", plotSize, plotFlags))
+                    {
+                        
+                        ImPlot::SetupAxes("Time (s)", "CPU Usage", xAxisFlags, yAxisFlags);
+                        ImPlot::SetupAxisLimits(ImAxis_X1, t - HISTORY * 0.9f, t + HISTORY * 0.1f, ImGuiCond_Always);
+                        ImPlot::SetupAxisLimits(ImAxis_Y1, 0, 100, ImGuiCond_Always);
+                        
+                        ImPlot::PlotLine("GCS CPU 1 Usage (%)", &cpu1UsageScrollBuffer.m_data[0].x, &cpu1UsageScrollBuffer.m_data[0].y, 
+                                cpu1UsageScrollBuffer.m_data.size(), 0, cpu1UsageScrollBuffer.m_offset, 2* sizeof(float));
+                        
+                        ImPlot::EndPlot();
+                    }
+                    
+                    static ScrollingBuffer cpu2UsageScrollBuffer;
+                    
+                    cpu2UsageScrollBuffer.addPoint(t, cpuLoad[1] * 100);
+                    
+                    ImGui::SameLine();
+                    if (ImPlot::BeginPlot("GCS CPU 2 Usage", plotSize, plotFlags))
+                    {
+                        
+                        ImPlot::SetupAxes("Time (s)", "CPU Usage", xAxisFlags, yAxisFlags);
+                        ImPlot::SetupAxisLimits(ImAxis_X1, t - HISTORY * 0.9f, t + HISTORY * 0.1f, ImGuiCond_Always);
+                        ImPlot::SetupAxisLimits(ImAxis_Y1, 0, 100, ImGuiCond_Always);
+                        
+                        ImPlot::PlotLine("GCS CPU 2 Usage", &cpu2UsageScrollBuffer.m_data[0].x, &cpu2UsageScrollBuffer.m_data[0].y, 
+                                cpu2UsageScrollBuffer.m_data.size(), 0, cpu2UsageScrollBuffer.m_offset, 2* sizeof(float));
+                        
+                        ImPlot::EndPlot();
+                    }
+                    
+                    static ScrollingBuffer cpu3UsageScrollBuffer;
+                    
+                    cpu3UsageScrollBuffer.addPoint(t, cpuLoad[2] * 100);
+                    
+                    if (ImPlot::BeginPlot("GCS CPU 3 Usage", plotSize, plotFlags))
+                    {
+                        
+                        ImPlot::SetupAxes("Time (s)", "CPU Usage", xAxisFlags, yAxisFlags);
+                        ImPlot::SetupAxisLimits(ImAxis_X1, t - HISTORY * 0.9f, t + HISTORY * 0.1f, ImGuiCond_Always);
+                        ImPlot::SetupAxisLimits(ImAxis_Y1, 0, 100, ImGuiCond_Always);
+                        
+                        ImPlot::PlotLine("GCS CPU 3 Usage", &cpu3UsageScrollBuffer.m_data[0].x, &cpu3UsageScrollBuffer.m_data[0].y, 
+                                cpu3UsageScrollBuffer.m_data.size(), 0, cpu3UsageScrollBuffer.m_offset, 2* sizeof(float));
+                        
+                        ImPlot::EndPlot();
+                    }
+                    
+                    static ScrollingBuffer cpu4UsageScrollBuffer;
+                    
+                    cpu4UsageScrollBuffer.addPoint(t, cpuLoad[3] * 100);
+                    
+                    ImGui::SameLine();
+                    if (ImPlot::BeginPlot("GCS CPU 4 Usage", plotSize, plotFlags))
+                    {
+                        
+                        ImPlot::SetupAxes("Time (s)", "CPU Usage", xAxisFlags, yAxisFlags);
+                        ImPlot::SetupAxisLimits(ImAxis_X1, t - HISTORY * 0.9f, t + HISTORY * 0.1f, ImGuiCond_Always);
+                        ImPlot::SetupAxisLimits(ImAxis_Y1, 0, 100, ImGuiCond_Always);
+                        
+                        ImPlot::PlotLine("GCS CPU 4 Usage", &cpu4UsageScrollBuffer.m_data[0].x, &cpu4UsageScrollBuffer.m_data[0].y, 
+                                cpu4UsageScrollBuffer.m_data.size(), 0, cpu4UsageScrollBuffer.m_offset, 2* sizeof(float));
+                        
+                        ImPlot::EndPlot();
+                    }
+                }
+                
             }
-            ImGui::Text("Virtual memory used: %d MB / %d MB", (int)(memUsed.get() / 1e6), (int) (totalVirtualMem / 1e6));
             
-			if (memUsed.get() / totalVirtualMem > 0.95)
-			{
-				ROS_INFO("Virtual memory in used exceeded 95%%! Killing process.");
-				return 1;
-			}
+            ImGui::Separator();
             
-            static float t = 0.0f;
-            const static float HISTORY = 10.0f;
-            t += frameDurationMillis / 1e3f;
-            
-            // Laptop memory plot
-            
-            static ScrollingBuffer memScrollBuffer;
-            
-            memScrollBuffer.addPoint(t, memUsed.get() / 1e6f);
-            
-            if (ImPlot::BeginPlot("Virtual memory"))
             {
                 
-                ImPlot::SetupAxes("Time (s)", "Memory", 
-                        ImPlotAxisFlags_NoLabel | ImPlotAxisFlags_NoTickLabels, 
-                        ImPlotAxisFlags_LockMin | ImPlotAxisFlags_LockMax);
-                ImPlot::SetupAxisLimits(ImAxis_X1, t - HISTORY * 0.9f, t + HISTORY * 0.1f, ImGuiCond_Always);
-                ImPlot::SetupAxisLimits(ImAxis_Y1, 0, totalVirtualMem / 1e6f, ImGuiCond_Always);
+                ImGui::Text("OBC Resources");
                 
-                ImPlot::PlotLine("CPU Usage", &memScrollBuffer.m_data[0].x, &memScrollBuffer.m_data[0].y, 
-                        memScrollBuffer.m_data.size(), 0, memScrollBuffer.m_offset, 2* sizeof(float));
+                std::vector<double> cpuLoad = obcCurrentCPUUserLoad.get();
+                for (int i = 0; i < 1 && numTimesSet; i++)
+                {
+                    ImGui::Text("CPU #%d user load: %f%%", i, cpuLoad[i] * 100);
+                    ImGui::Text("CPU #%d system load: %f%%", i, cpuLoad[i] * 100);
+                }
+                ImGui::Text("Virtual memory used: %d MB / %d MB", (int)(obcMemUsed.get() / 1e6), (int) (obcTotalVirtualMem / 1e6));
                 
-                ImPlot::EndPlot();
-            }
-            
-            // Laptop CPU plots
-            
-            if (numTimesSet)
-            {
-                ImVec2 plotSize(300, 200);
+                if (obcMemUsed.get() / obcTotalVirtualMem > 0.95)
+                {
+                    ROS_INFO("Virtual memory in use exceeded 95%%! Killing process.");
+                    return 1;
+                }
                 
-                ImPlotAxisFlags yAxisFlags = ImPlotAxisFlags_LockMin | ImPlotAxisFlags_LockMax;
-                ImPlotAxisFlags xAxisFlags = ImPlotAxisFlags_NoTickLabels | ImPlotAxisFlags_NoLabel;
-                ImPlotFlags plotFlags = ImPlotFlags_NoLegend;
+                static float t = 0.0f;
+                const static float HISTORY = 10.0f;
+                t += frameDurationMillis / 1e3f;
                 
-                static ScrollingBuffer cpu1UsageScrollBuffer;
+                // OBC memory plot
                 
-                cpu1UsageScrollBuffer.addPoint(t, cpuLoad[0] * 100);
+                static ScrollingBuffer memScrollBuffer;
                 
-                if (ImPlot::BeginPlot("CPU 1 Usage", plotSize, plotFlags))
+                memScrollBuffer.addPoint(t, obcMemUsed.get() / 1e6f);
+                
+                if (ImPlot::BeginPlot("OBC Virtual Memory"))
                 {
                     
-                    ImPlot::SetupAxes("Time (s)", "CPU Usage", xAxisFlags, yAxisFlags);
+                    ImPlot::SetupAxes("Time (s)", "Memory", 
+                            ImPlotAxisFlags_NoLabel | ImPlotAxisFlags_NoTickLabels, 
+                            ImPlotAxisFlags_LockMin | ImPlotAxisFlags_LockMax);
                     ImPlot::SetupAxisLimits(ImAxis_X1, t - HISTORY * 0.9f, t + HISTORY * 0.1f, ImGuiCond_Always);
-                    ImPlot::SetupAxisLimits(ImAxis_Y1, 0, 100, ImGuiCond_Always);
+                    ImPlot::SetupAxisLimits(ImAxis_Y1, 0, obcTotalVirtualMem / 1e6f, ImGuiCond_Always);
                     
-                    ImPlot::PlotLine("CPU Usage", &cpu1UsageScrollBuffer.m_data[0].x, &cpu1UsageScrollBuffer.m_data[0].y, 
-                            cpu1UsageScrollBuffer.m_data.size(), 0, cpu1UsageScrollBuffer.m_offset, 2* sizeof(float));
+                    ImPlot::PlotLine("OBC Virtual Memory", &memScrollBuffer.m_data[0].x, &memScrollBuffer.m_data[0].y, 
+                            memScrollBuffer.m_data.size(), 0, memScrollBuffer.m_offset, 2* sizeof(float));
                     
                     ImPlot::EndPlot();
                 }
                 
-                static ScrollingBuffer cpu2UsageScrollBuffer;
+                // OBC CPU plot
                 
-                cpu2UsageScrollBuffer.addPoint(t, cpuLoad[1] * 100);
-                
-                ImGui::SameLine();
-                if (ImPlot::BeginPlot("CPU 2 Usage", plotSize, plotFlags))
+                if (numTimesSet)
                 {
+                    ImVec2 plotSize(300, 200);
                     
-                    ImPlot::SetupAxes("Time (s)", "CPU Usage", xAxisFlags, yAxisFlags);
-                    ImPlot::SetupAxisLimits(ImAxis_X1, t - HISTORY * 0.9f, t + HISTORY * 0.1f, ImGuiCond_Always);
-                    ImPlot::SetupAxisLimits(ImAxis_Y1, 0, 100, ImGuiCond_Always);
+                    ImPlotAxisFlags yAxisFlags = ImPlotAxisFlags_LockMin | ImPlotAxisFlags_LockMax;
+                    ImPlotAxisFlags xAxisFlags = ImPlotAxisFlags_NoTickLabels | ImPlotAxisFlags_NoLabel;
+                    ImPlotFlags plotFlags = ImPlotFlags_NoLegend;
                     
-                    ImPlot::PlotLine("CPU Usage", &cpu2UsageScrollBuffer.m_data[0].x, &cpu2UsageScrollBuffer.m_data[0].y, 
-                            cpu2UsageScrollBuffer.m_data.size(), 0, cpu2UsageScrollBuffer.m_offset, 2* sizeof(float));
+                    static ScrollingBuffer cpu1UsageScrollBuffer;
                     
-                    ImPlot::EndPlot();
+                    cpu1UsageScrollBuffer.addPoint(t, cpuLoad[0] * 100);
+                    
+                    if (ImPlot::BeginPlot("OBC CPU Usage", plotSize, plotFlags))
+                    {
+                        
+                        ImPlot::SetupAxes("Time (s)", "CPU Usage (%)", xAxisFlags, yAxisFlags);
+                        ImPlot::SetupAxisLimits(ImAxis_X1, t - HISTORY * 0.9f, t + HISTORY * 0.1f, ImGuiCond_Always);
+                        ImPlot::SetupAxisLimits(ImAxis_Y1, 0, 100, ImGuiCond_Always);
+                        
+                        ImPlot::PlotLine("OBC CPU Usage (%)", &cpu1UsageScrollBuffer.m_data[0].x, &cpu1UsageScrollBuffer.m_data[0].y, 
+                                cpu1UsageScrollBuffer.m_data.size(), 0, cpu1UsageScrollBuffer.m_offset, 2* sizeof(float));
+                        
+                        ImPlot::EndPlot();
+                    }
                 }
                 
-                static ScrollingBuffer cpu3UsageScrollBuffer;
-                
-                cpu3UsageScrollBuffer.addPoint(t, cpuLoad[2] * 100);
-                
-                if (ImPlot::BeginPlot("CPU 3 Usage", plotSize, plotFlags))
-                {
-                    
-                    ImPlot::SetupAxes("Time (s)", "CPU Usage", xAxisFlags, yAxisFlags);
-                    ImPlot::SetupAxisLimits(ImAxis_X1, t - HISTORY * 0.9f, t + HISTORY * 0.1f, ImGuiCond_Always);
-                    ImPlot::SetupAxisLimits(ImAxis_Y1, 0, 100, ImGuiCond_Always);
-                    
-                    ImPlot::PlotLine("CPU Usage", &cpu3UsageScrollBuffer.m_data[0].x, &cpu3UsageScrollBuffer.m_data[0].y, 
-                            cpu3UsageScrollBuffer.m_data.size(), 0, cpu3UsageScrollBuffer.m_offset, 2* sizeof(float));
-                    
-                    ImPlot::EndPlot();
-                }
-                
-                static ScrollingBuffer cpu4UsageScrollBuffer;
-                
-                cpu4UsageScrollBuffer.addPoint(t, cpuLoad[3] * 100);
-                
-                ImGui::SameLine();
-                if (ImPlot::BeginPlot("CPU 4 Usage", plotSize, plotFlags))
-                {
-                    
-                    ImPlot::SetupAxes("Time (s)", "CPU Usage", xAxisFlags, yAxisFlags);
-                    ImPlot::SetupAxisLimits(ImAxis_X1, t - HISTORY * 0.9f, t + HISTORY * 0.1f, ImGuiCond_Always);
-                    ImPlot::SetupAxisLimits(ImAxis_Y1, 0, 100, ImGuiCond_Always);
-                    
-                    ImPlot::PlotLine("CPU Usage", &cpu4UsageScrollBuffer.m_data[0].x, &cpu4UsageScrollBuffer.m_data[0].y, 
-                            cpu4UsageScrollBuffer.m_data.size(), 0, cpu4UsageScrollBuffer.m_offset, 2* sizeof(float));
-                    
-                    ImPlot::EndPlot();
-                }
             }
             
             ImGui::End();

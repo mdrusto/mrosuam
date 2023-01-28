@@ -42,7 +42,7 @@ namespace m_rosuam::ResourceMonitor
 		ros::Publisher averagedCpuSystemLoadPublisher = nodeHandle.advertise<std_msgs::Float64MultiArray>(
 				"/mrosuam/resources/" + machineID + "/filtered/cpu_system_load", 100);
 		
-		ros::Publisher virtualMemUsedPublisher = nodeHandle.advertise<std_msgs::UInt64>("mrosuam/resources/" + hostname + "/virtual_mem_used", 100);
+		ros::Publisher virtualMemUsedPublisher = nodeHandle.advertise<std_msgs::UInt64>("/mrosuam/resources/" + machineID + "/virtual_mem_used", 100);
 		
 		//ros::MultiThreadedSpinner spinner;
 		ros::SingleThreadedSpinner spinner;

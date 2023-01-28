@@ -1,7 +1,7 @@
 <launch>
 	
 	<machine name="gcs" address="baela" default="true"/>
-	<machine name="obc" address="halaena"/>
+	<machine name="obc" address="halaena" env-loader="~/catkin_ws/devel/env.sh"/>
 	
 	<node name="gui" type="mrosuam_gui" pkg="mrosuam"/>
 	
@@ -13,8 +13,7 @@
 		<param name="comp_name" value="obc"/>
 	</node>
 	
-	<!--
-	<node name="camera" type="raspicam_node" pkg="raspicam_node" machine="obc">
+	<!--node name="camera" type="raspicam_node" pkg="raspicam_node" machine="obc">
 		<param name="private_topics" value="true"/>
 		
 		<param name="camera_frame_id" value="raspicam"/>
@@ -30,6 +29,5 @@
 		<param name="framerate" value="30"/>
 		<param name="exposure_mode" value="antishake"/>
 		<param name="shutter_speed" value="0"/>
-	</node>
-	-->
+	</node-->
 </launch>
