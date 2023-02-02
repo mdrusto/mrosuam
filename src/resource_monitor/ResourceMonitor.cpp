@@ -4,6 +4,7 @@
 #include <iostream>
 #include <fstream>
 #include <chrono>
+#include <deque>
 
 #include <sys/types.h>
 #include <sys/sysinfo.h>
@@ -16,6 +17,8 @@ namespace m_rosuam::ResourceMonitor
 {
 	
 	int numCPUs;
+	
+	const static int CPU_FILTER_LENGTH = 20;
 	
 	int createNode(int argc, char** argv)
 	{
@@ -33,14 +36,14 @@ namespace m_rosuam::ResourceMonitor
 		else
 			machineID = "obc";
 		
-		ros::Publisher cpuUserLoadPublisher = nodeHandle.advertise<std_msgs::Float64MultiArray>(
+		ros::Publisher rawCpuUserLoadPublisher = nodeHandle.advertise<std_msgs::Float64MultiArray>(
 				"/mrosuam/resources/" + machineID + "/raw/cpu_user_load", 100);
-		ros::Publisher cpuSystemLoadPublisher = nodeHandle.advertise<std_msgs::Float64MultiArray>(
+		ros::Publisher rawCpuSystemLoadPublisher = nodeHandle.advertise<std_msgs::Float64MultiArray>(
 				"/mrosuam/resources/" + machineID + "/raw/cpu_system_load", 100);
 		ros::Publisher averagedCpuUserLoadPublisher = nodeHandle.advertise<std_msgs::Float64MultiArray>(
-				"/mrosuam/resources/" + machineID + "/filtered/cpu_user_load", 100);
+				"/mrosuam/resources/" + machineID + "/averaged/cpu_user_load", 100);
 		ros::Publisher averagedCpuSystemLoadPublisher = nodeHandle.advertise<std_msgs::Float64MultiArray>(
-				"/mrosuam/resources/" + machineID + "/filtered/cpu_system_load", 100);
+				"/mrosuam/resources/" + machineID + "/averaged/cpu_system_load", 100);
 		
 		ros::Publisher virtualMemUsedPublisher = nodeHandle.advertise<std_msgs::UInt64>("/mrosuam/resources/" + machineID + "/virtual_mem_used", 100);
 		
@@ -86,7 +89,9 @@ namespace m_rosuam::ResourceMonitor
 			
 			static std::vector<int> lastUserJiffies(numCPUs), lastSystemJiffies(numCPUs), lastTotalJiffies(numCPUs);
 			
-			std::vector<double> userPercentage(numCPUs), systemPercentage(numCPUs);
+			std::vector<double> rawCpuUserPercentage(numCPUs), rawCpuSystemPercentage(numCPUs);
+			
+			static std::deque<std::vector<double>> cpuUserLoadDeque, cpuSystemLoadDeque;
 			
 			for (int i = 0; i < numCPUs; i++)
 			{
@@ -121,8 +126,8 @@ namespace m_rosuam::ResourceMonitor
 					j++;
 				}
 				
-				userPercentage[i] = (userJiffies - lastUserJiffies[i]) / (double)(totalJiffies - lastTotalJiffies[i]);
-				systemPercentage[i] = (systemJiffies - lastSystemJiffies[i]) / (double)(totalJiffies - lastTotalJiffies[i]);
+				rawCpuUserPercentage[i] = (userJiffies - lastUserJiffies[i]) / (double)(totalJiffies - lastTotalJiffies[i]);
+				rawCpuSystemPercentage[i] = (systemJiffies - lastSystemJiffies[i]) / (double)(totalJiffies - lastTotalJiffies[i]);
 				
 				//ROS_INFO("User: %d (last %d), system: %d (last %d), total: %d (last %d) - %f%%, %f%%", 
 				//		userJiffies, lastUserJiffies[i], systemJiffies, lastSystemJiffies[i], totalJiffies, lastTotalJiffies[i], userPercentage[i] * 100, systemPercentage[i] * 100);
@@ -130,16 +135,62 @@ namespace m_rosuam::ResourceMonitor
 				lastUserJiffies[i] = userJiffies;
 				lastSystemJiffies[i] = systemJiffies;
 				lastTotalJiffies[i] = totalJiffies;
+				
 			}
 			
-			std_msgs::Float64MultiArray userLoadMsg;
-			userLoadMsg.data = userPercentage;
+			// Average CPU values
 			
-			std_msgs::Float64MultiArray systemLoadMsg;
-			systemLoadMsg.data = systemPercentage;
+			cpuUserLoadDeque.push_back(rawCpuUserPercentage);
 			
-			cpuUserLoadPublisher.publish<std_msgs::Float64MultiArray>(userLoadMsg);
-			cpuSystemLoadPublisher.publish<std_msgs::Float64MultiArray>(systemLoadMsg);
+			cpuSystemLoadDeque.push_back(rawCpuSystemPercentage);
+			
+			if (cpuUserLoadDeque.size() == CPU_FILTER_LENGTH) {
+				cpuUserLoadDeque.pop_front();
+				cpuSystemLoadDeque.pop_front();
+			}
+			
+			std::vector<double> averagedCpuUserLoad(numCPUs), averagedCpuSystemLoad(numCPUs);
+			
+			// First loop over all CPUs
+			
+			uint8_t dequeSize = cpuUserLoadDeque.size(); 
+			
+			for (size_t i = 0; i < numCPUs; i++) {
+				
+				// For each CPU, sum total of load percentages
+				
+				double userTotal = 0, systemTotal = 0;
+				
+				for (size_t j = 0; j < dequeSize; j++) {
+					userTotal += cpuUserLoadDeque[j][i];
+					systemTotal += cpuSystemLoadDeque[j][i];
+				}
+				
+				averagedCpuUserLoad[i] = userTotal / dequeSize;
+				averagedCpuSystemLoad[i] = systemTotal / dequeSize;
+			}
+			
+			
+			// Publish messages
+			
+			std_msgs::Float64MultiArray rawCpuUserLoadMsg;
+			rawCpuUserLoadMsg.data = rawCpuUserPercentage;
+			
+			std_msgs::Float64MultiArray rawCpuSystemLoadMsg;
+			rawCpuSystemLoadMsg.data = rawCpuSystemPercentage;
+			
+			rawCpuUserLoadPublisher.publish<std_msgs::Float64MultiArray>(rawCpuUserLoadMsg);
+			rawCpuSystemLoadPublisher.publish<std_msgs::Float64MultiArray>(rawCpuSystemLoadMsg);
+			
+			std_msgs::Float64MultiArray filteredCpuUserLoadMsg;
+			filteredCpuUserLoadMsg.data = averagedCpuUserLoad;
+			
+			std_msgs::Float64MultiArray filteredCpuSystemLoadMsg;
+			filteredCpuSystemLoadMsg.data = averagedCpuSystemLoad;
+			
+			averagedCpuUserLoadPublisher.publish<std_msgs::Float64MultiArray>(filteredCpuUserLoadMsg);
+			averagedCpuSystemLoadPublisher.publish<std_msgs::Float64MultiArray>(filteredCpuSystemLoadMsg);
+			
 			
 			struct sysinfo memInfo;
 			sysinfo(&memInfo);
@@ -149,13 +200,15 @@ namespace m_rosuam::ResourceMonitor
 			totalVirtualMem += memInfo.mem_unit;
 			
 			uint64_t virtualMemUsed = memInfo.totalram - memInfo.freeram;
-			virtualMemUsed += memInfo.totalswap = memInfo.freeswap;
+			virtualMemUsed += memInfo.totalswap - memInfo.freeswap;
 			virtualMemUsed += memInfo.mem_unit;
 			
 			std_msgs::UInt64 virtualMemUsedMsg;
 			virtualMemUsedMsg.data = virtualMemUsed;
 			
 			virtualMemUsedPublisher.publish<std_msgs::UInt64>(virtualMemUsedMsg);
+			
+			
 			//ROS_INFO("Virtual memory used: %fMB / %dMB", (float)(virtualMemUsed / 1e6), (int)(totalVirtualMem / 1e6));
 			
 			//ROS_INFO("Resource monitor iteration time: %f ms", frameDurationMillis);
