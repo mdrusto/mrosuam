@@ -13,7 +13,7 @@
 		<param name="comp_name" value="obc"/>
 	</node>
 	
-	<!--node name="mavros" type="mavros_node" pkg="mavros" machine="obc" output="screen" respawn="false" clear_params="true" required="true">
+	<!--node name="mavros" type="mavros_node" pkg="mavros" machine="obc" output="log" respawn="false" clear_params="true" required="true">
 		<param name="fcu_url" value="/dev/ttyAMA0:57600"/>
 		<param name="fcu_protocol" value="v2.0"/>
 		<param name="gcs_url" value=""/>
