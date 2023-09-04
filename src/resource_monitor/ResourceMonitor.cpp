@@ -13,7 +13,7 @@
 #include <std_msgs/Float64MultiArray.h>
 #include <std_msgs/UInt64.h>
 
-namespace m_rosuam::ResourceMonitor
+namespace mrosuam::ResourceMonitor
 {
 	
 	int numCPUs;
@@ -245,5 +245,5 @@ namespace m_rosuam::ResourceMonitor
 
 int main(int argc, char** argv)
 {
-	return m_rosuam::ResourceMonitor::createNode(argc, argv);
+	return mrosuam::ResourceMonitor::createNode(argc, argv);
 }

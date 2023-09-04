@@ -1,6 +1,8 @@
+#pragma once
+
 #include <mutex>
 
-namespace m_rosuam::gui
+namespace mrosuam::gui
 {
 
 	template <typename T>

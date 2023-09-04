@@ -1,4 +1,4 @@
-#include "mrosuam/gui/AtomicVariable.h"
+#include "mrosuam/gui/ROSTopicVariable.h"
 
 #include <chrono>
 #include <mutex>
@@ -9,6 +9,8 @@
 #include <ros/ros.h>
 
 #include <mavros_msgs/State.h>
+
+#include <geometry_msgs/PoseStamped.h>
 
 #include <sensor_msgs/CompressedImage.h>
 
@@ -29,18 +31,25 @@
 
 #pragma comment(lib, "legacy_stdio_definitions");
 
-namespace m_rosuam::gui {
-
-    AtomicVariable<mavros_msgs::State> currentState;
+namespace mrosuam::gui {
     
-    AtomicVariable<std::vector<double>> rawGcsCpuUserLoad(std::vector<double>(4)), rawGcsCpuSystemLoad(std::vector<double>(4));
-    AtomicVariable<std::vector<double>> averagedGcsCpuUserLoad(std::vector<double>(4)), averagedGcsCpuSystemLoad(std::vector<double>(4));
-    AtomicVariable<std::vector<double>> rawObcCpuUserLoad(std::vector<double>(4)), rawObcCpuSystemLoad(std::vector<double>(4));
-    AtomicVariable<std::vector<double>> averagedObcCpuUserLoad(std::vector<double>(4)), averagedObcCpuSystemLoad(std::vector<double>(4));
     
-    AtomicVariable<uint64_t> gcsMemUsed, obcMemUsed;
-
-    AtomicVariable<sensor_msgs::CompressedImage> currentImage;
+    ROSTopicVariable<mavros_msgs::State, mavros_msgs::State> currentState([] (mavros_msgs::State::ConstPtr state) -> mavros_msgs::State { return *state; });
+    
+    ROSTopicVariable<std::vector<double>, std_msgs::Float64MultiArray> rawGcsCpuUserLoad([] (std_msgs::Float64MultiArray::ConstPtr msg) -> std::vector<double> { return msg->data; }, std::vector<double>(4));
+    ROSTopicVariable<std::vector<double>, std_msgs::Float64MultiArray> rawGcsCpuSystemLoad([] (std_msgs::Float64MultiArray::ConstPtr msg) -> std::vector<double> { return msg->data; }, std::vector<double>(4));
+    ROSTopicVariable<std::vector<double>, std_msgs::Float64MultiArray> averagedGcsCpuUserLoad([] (std_msgs::Float64MultiArray::ConstPtr msg) -> std::vector<double> { return msg->data; }, std::vector<double>(4));
+    ROSTopicVariable<std::vector<double>, std_msgs::Float64MultiArray> averagedGcsCpuSystemLoad([] (std_msgs::Float64MultiArray::ConstPtr msg) -> std::vector<double> { return msg->data; }, std::vector<double>(4));
+    ROSTopicVariable<uint64_t, std_msgs::UInt64> gcsMemUsed([] (std_msgs::UInt64::ConstPtr msg) -> uint64_t { return msg->data; });
+    ROSTopicVariable<std::vector<double>, std_msgs::Float64MultiArray> rawObcCpuUserLoad([] (std_msgs::Float64MultiArray::ConstPtr msg) -> std::vector<double> { return msg->data; }, std::vector<double>(1));
+    ROSTopicVariable<std::vector<double>, std_msgs::Float64MultiArray> rawObcCpuSystemLoad([] (std_msgs::Float64MultiArray::ConstPtr msg) -> std::vector<double> { return msg->data; }, std::vector<double>(1));
+    ROSTopicVariable<std::vector<double>, std_msgs::Float64MultiArray> averagedObcCpuUserLoad([] (std_msgs::Float64MultiArray::ConstPtr msg) -> std::vector<double> { return msg->data; }, std::vector<double>(1));
+    ROSTopicVariable<std::vector<double>, std_msgs::Float64MultiArray> averagedObcCpuSystemLoad([] (std_msgs::Float64MultiArray::ConstPtr msg) -> std::vector<double> { return msg->data; }, std::vector<double>(1));
+    ROSTopicVariable<uint64_t, std_msgs::UInt64> obcMemUsed([] (std_msgs::UInt64::ConstPtr msg) -> uint64_t { return msg->data; });
+    ROSTopicVariable<sensor_msgs::CompressedImage, sensor_msgs::CompressedImage> cameraImage([] (sensor_msgs::CompressedImage::ConstPtr msg) -> sensor_msgs::CompressedImage { return *msg; });
+    
+    AtomicVariable<geometry_msgs::PoseStamped> uavPose;
+    
     std::mutex imageMutex;
     //sensor_msgs::CompressedImage currentImage;
     //int numTimesSet = 0;
@@ -53,74 +62,19 @@ namespace m_rosuam::gui {
     {
         fprintf(stderr, "Glfw Error %d: %s\n", error, description);
     }
-
-    void stateCallback(const mavros_msgs::State::ConstPtr& state)
-    {
-        currentState = *state;
-    }
     
-    void rawGcsCpuUserLoadCallback(const std_msgs::Float64MultiArray::ConstPtr& ptr)
+    void uavPoseCallback(const geometry_msgs::PoseStamped::ConstPtr& pose)
     {
-        rawGcsCpuUserLoad = ptr->data;
-    }
-    
-    void rawGcsCpuSystemLoadCallback(const std_msgs::Float64MultiArray::ConstPtr& ptr)
-    {
-        rawGcsCpuSystemLoad = ptr->data;
-    }
-    
-    void averagedGcsCpuUserLoadCallback(const std_msgs::Float64MultiArray::ConstPtr& ptr)
-    {
-        averagedGcsCpuUserLoad = ptr->data;
-    }
-    
-    void averagedGcsCpuSystemLoadCallback(const std_msgs::Float64MultiArray::ConstPtr& ptr)
-    {
-        averagedGcsCpuSystemLoad = ptr->data;
-    }
-    
-    void gcsMemUsedCallback(const std_msgs::UInt64::ConstPtr& ptr)
-    {
-        gcsMemUsed = ptr->data;
-    }
-    
-    void rawObcCpuUserLoadCallback(const std_msgs::Float64MultiArray::ConstPtr& ptr)
-    {
-        rawObcCpuUserLoad = ptr->data;
-    }
-    
-    void rawObcCpuSystemLoadCallback(const std_msgs::Float64MultiArray::ConstPtr& ptr)
-    {
-        rawObcCpuSystemLoad = ptr->data;
-    }
-    
-    void averagedObcCpuUserLoadCallback(const std_msgs::Float64MultiArray::ConstPtr& ptr)
-    {
-        averagedObcCpuUserLoad = ptr->data;
-    }
-    
-    void averagedObcCpuSystemLoadCallback(const std_msgs::Float64MultiArray::ConstPtr& ptr)
-    {
-        averagedObcCpuSystemLoad = ptr->data;
-    }
-    
-    void obcMemUsedCallback(const std_msgs::UInt64::ConstPtr& ptr)
-    {
-        obcMemUsed = ptr->data;
-    }
-    void cameraCallback(const sensor_msgs::CompressedImage::ConstPtr& image)
-    {
-        imageMutex.lock();
-        currentImage = *image;
-        //std::cout << "Changing image, data point: " << currentImage.data[100] << "\n";
-        imageMutex.unlock();
+        uavPose = *pose;
     }
 
     bool imGuiSetupWindow()
     {
         glfwSetErrorCallback(glfw_error_callback);
-
-        if (!glfwInit())
+        
+        std::cout << "Setting up window" << std::endl;
+        
+        if (glfwInit() == GLFW_FALSE)
             return 1;
 
         //const char* glsl_version = "#version 130";
@@ -250,6 +204,9 @@ namespace m_rosuam::gui {
     
     int run(int argc, char** argv)
     {
+        ros::init(argc, argv, "gui");
+        
+        ROS_INFO("Starting GUI");
         
         if (imGuiSetupWindow() > 0)
             return 1;
@@ -273,46 +230,24 @@ namespace m_rosuam::gui {
             return 1;
         }
         
-        ros::init(argc, argv, "gui");
         ros::NodeHandle nodeHandle;
         
-        //ros::Subscriber stateSuscriber = 
-        //        nodeHandle.subscribe<mavros_msgs::State>("mavros/state", 10, stateCallback);
+        currentState.initialize(nodeHandle, "/mavros/state", 10);
         
-        ros::Subscriber cameraSubsciber = 
-                nodeHandle.subscribe<sensor_msgs::CompressedImage>("/raspicam_node/image/compressed", 
-                10, cameraCallback);
+        rawGcsCpuUserLoad.initialize(nodeHandle, "/mrosuam/resources/gcs/raw/cpu_user_load", 10);
+        rawGcsCpuSystemLoad.initialize(nodeHandle, "/mrosuam/resources/gcs/raw/cpu_system_load", 10);
+        averagedGcsCpuUserLoad.initialize(nodeHandle, "/mrosuam/resources/gcs/averaged/cpu_user_load", 10);
+        averagedGcsCpuSystemLoad.initialize(nodeHandle, "/mrosuam/resources/gcs/averaged/cpu_system_load", 10);
+        gcsMemUsed.initialize(nodeHandle, "/mrosuam/resources/gcs/virtual_mem_used", 10);
+        rawObcCpuUserLoad.initialize(nodeHandle, "/mrosuam/resources/obc/raw/cpu_user_load", 10);
+        rawObcCpuSystemLoad.initialize(nodeHandle, "/mrosuam/resources/obc/raw/cpu_system_load", 10);
+        averagedObcCpuUserLoad.initialize(nodeHandle, "/mrosuam/resources/obc/averaged/cpu_user_load", 10);
+        averagedObcCpuSystemLoad.initialize(nodeHandle, "/mrosuam/resources/obc/averaged/cpu_system_load", 10);
+        obcMemUsed.initialize(nodeHandle, "/mrosuam/resources/obc/virtual_mem_used", 10);
+        cameraImage.initialize(nodeHandle, "/raspicam_node/image/compressed", 10);
         
-        ros::Subscriber rawGcsCpuUserLoadSubscriber = 
-                nodeHandle.subscribe<std_msgs::Float64MultiArray>("/mrosuam/resources/gcs/raw/cpu_user_load", 10, rawGcsCpuUserLoadCallback);
         
-        ros::Subscriber rawGcsCpuSystemLoadSubscriber = 
-                nodeHandle.subscribe<std_msgs::Float64MultiArray>("/mrosuam/resources/gcs/raw/cpu_system_load", 10, rawGcsCpuSystemLoadCallback);
-        
-        ros::Subscriber averagedGcsCpuUserLoadSubscriber = 
-                nodeHandle.subscribe<std_msgs::Float64MultiArray>("/mrosuam/resources/gcs/averaged/cpu_user_load", 10, averagedGcsCpuUserLoadCallback);
-        
-        ros::Subscriber averagedGcsCpuSystemLoadSubscriber = 
-                nodeHandle.subscribe<std_msgs::Float64MultiArray>("/mrosuam/resources/gcs/averaged/cpu_system_load", 10, averagedGcsCpuSystemLoadCallback);
-        
-        ros::Subscriber gcsMemUsedSubscriber = 
-                nodeHandle.subscribe<std_msgs::UInt64>("/mrosuam/resources/gcs/virtual_mem_used", 10, gcsMemUsedCallback);
-        
-        ros::Subscriber rawObcCpuUserLoadSubscriber = 
-                nodeHandle.subscribe<std_msgs::Float64MultiArray>("/mrosuam/resources/obc/raw/cpu_user_load", 10, rawObcCpuUserLoadCallback);
-        
-        ros::Subscriber rawObcCpuSystemLoadSubscriber = 
-                nodeHandle.subscribe<std_msgs::Float64MultiArray>("/mrosuam/resources/obc/raw/cpu_system_load", 10, rawObcCpuSystemLoadCallback);
-        
-        ros::Subscriber averagedObcCpuUserLoadSubscriber = 
-                nodeHandle.subscribe<std_msgs::Float64MultiArray>("/mrosuam/resources/obc/averaged/cpu_user_load", 10, averagedObcCpuUserLoadCallback);
-        
-        ros::Subscriber averagedObcCpuSystemLoadSubscriber = 
-                nodeHandle.subscribe<std_msgs::Float64MultiArray>("/mrosuam/resources/obc/averaged/cpu_system_load", 10, averagedObcCpuSystemLoadCallback);
-        
-        ros::Subscriber obcMemUsedSubscriber = 
-                nodeHandle.subscribe<std_msgs::UInt64>("/mrosuam/resources/obc/virtual_mem_used", 10, obcMemUsedCallback);
-        
+        ros::Subscriber uavPoseSubscriber = nodeHandle.subscribe<geometry_msgs::PoseStamped>("/mavros/local_position/pose", 10, uavPoseCallback);
         
         ros::AsyncSpinner spinner(4);
         
@@ -351,12 +286,13 @@ namespace m_rosuam::gui {
             
             //ImGui::ShowDemoWindow();
             
-            ImGui::Begin("Variables");
+            // Camera/CV window
             
+            if (ImGui::Begin("Camera"))
             {
                 
                 imageMutex.lock();
-                std::vector<uint8_t> imageDataVec = currentImage.get().data;
+                std::vector<uint8_t> imageDataVec = cameraImage.get().data;
                 unsigned char* imageDataPtr = (unsigned char*)&imageDataVec[0];
                 
                 int width = 0, height = 0, actualComps;
@@ -380,202 +316,245 @@ namespace m_rosuam::gui {
                 //ImGui::Text("Timestamp: %d", currentImage.get().header.stamp.nsec);
                 
                 imageMutex.unlock();
+                
+                ImGui::Text("Error: %d", glGetError());
+                
+                ImGui::End();
+                
             }
             
-            ImGui::Text("Error: %d", glGetError());
             
-            ImGui::End();
             
-            ImGui::Begin("Stats");
-            int fps = 1000 / frameDurationMillis;
-            ImGui::Text("Current frame time: %f ms (%d fps)", frameDurationMillis, fps);
+            // Stats Window
             
-            ImGui::Separator();
-            
-            ImPlotFlags memoryPlotFlags = ImPlotFlags_NoLegend;
-            ImPlotAxisFlags memoryPlotXAxisFlags = ImPlotAxisFlags_NoLabel | ImPlotAxisFlags_NoTickLabels;
-            ImPlotAxisFlags memoryPlotYAxisFlags = ImPlotAxisFlags_LockMin | ImPlotAxisFlags_LockMax;
-            
-            {
+            if (ImGui::Begin("Stats")) {
                 
-                ImGui::Text("GCS Resources");
+                float statsWindowWidth = ImGui::GetContentRegionAvailWidth();
                 
-                std::vector<double> rawCpuUserLoad = rawGcsCpuUserLoad.get();
-                std::vector<double> averagedCpuUserLoad = averagedGcsCpuUserLoad.get();
+                int fps = 1000 / frameDurationMillis;
+                ImGui::Text("Current frame time: %f ms (%d fps)", frameDurationMillis, fps);
                 
-                uint64_t gcsMemUsedInt = gcsMemUsed.get();
+                ImGui::Separator();
                 
-                /*for (int i = 0; i < 4; i++)
-                {
-                    ImGui::Text("Cpu #%d user load: %f%%", i, rawCpuUserLoad[i] * 100);
-                    ImGui::Text("Cpu #%d system load: %f%%", i, rawCpuUserLoad[i] * 100);
-                }
+                ImPlotFlags memoryPlotFlags = ImPlotFlags_NoLegend | ImPlotFlags_NoFrame;
+                ImPlotAxisFlags memoryPlotXAxisFlags = ImPlotAxisFlags_NoLabel | ImPlotAxisFlags_NoTickLabels;
+                ImPlotAxisFlags memoryPlotYAxisFlags = ImPlotAxisFlags_LockMin | ImPlotAxisFlags_LockMax;
                 
-                ImGui::Text("Virtual memory used: %d MB / %d MB", (int)(gcsMemUsedInt / 1e6), (int) (gcsTotalVirtualMem / 1e6));*/
+                ImPlot::PushStyleVar(ImPlotStyleVar_PlotPadding, ImVec2(1, 1));
                 
-                if (gcsMemUsedInt / gcsTotalVirtualMem > 0.95)
-                {
-                    ROS_INFO("GCS virtual memory in use exceeded 95%% (%lu / %lu)! Killing process.", gcsMemUsedInt, gcsTotalVirtualMem);
-                    return 1;
-                }
-                
-                static float t = 0.0f;
-                const static float HISTORY = 10.0f;
-                t += frameDurationMillis / 1e3f;
-                
-                
-                // Laptop memory plot
-                
-                static ScrollingBuffer memScrollBuffer;
-                
-                memScrollBuffer.addPoint(t, gcsMemUsedInt / 1e6f);
-                
-                if (ImPlot::BeginPlot("GCS Virtual Memory", {-1, 150}, memoryPlotFlags))
                 {
                     
-                    ImPlot::SetupAxes("Time (s)", "Memory", 
-                            memoryPlotXAxisFlags, 
-                            memoryPlotYAxisFlags);
-                    ImPlot::SetupAxisLimits(ImAxis_X1, t - HISTORY * 0.9f, t + HISTORY * 0.1f, ImGuiCond_Always);
-                    ImPlot::SetupAxisLimits(ImAxis_Y1, 0, gcsTotalVirtualMem / 1e6f, ImGuiCond_Always);
+                    ImGui::Text("GCS Resources");
                     
-                    ImPlot::PlotLine("Cpu Usage", &memScrollBuffer.m_data[0].x, &memScrollBuffer.m_data[0].y, 
-                            memScrollBuffer.m_data.size(), 0, memScrollBuffer.m_offset, 2* sizeof(float));
+                    std::vector<double> rawCpuUserLoad = rawGcsCpuUserLoad.get();
+                    std::vector<double> averagedCpuUserLoad = averagedGcsCpuUserLoad.get();
                     
-                    ImPlot::EndPlot();
-                }
-                
-                // Laptop Cpu plots
-                
-                ImPlot::PushStyleVar(ImPlotStyleVar_MarkerSize, 1);
-                
-                static std::vector<ScrollingBuffer> rawCpuUsageScrollBuffers(4), averagedCpuUsageScrollBuffers(4);
-                
-                for (size_t i = 0; i < 4; i++) {
+                    uint64_t gcsMemUsedInt = gcsMemUsed.get();
                     
-                    if (i == 1 || i == 3)
-                        ImGui::SameLine();
+                    if (gcsMemUsedInt / gcsTotalVirtualMem > 0.95)
+                    {
+                        ROS_INFO("GCS virtual memory in use exceeded 95%% (%lu / %lu)! Killing process.", gcsMemUsedInt, gcsTotalVirtualMem);
+                        return 1;
+                    }
                     
-                    ImVec2 plotSize(100, 150);
+                    static float t = 0.0f;
+                    const static float HISTORY = 10.0f;
+                    t += frameDurationMillis / 1e3f;
                     
-                    ImPlotAxisFlags yAxisFlags = ImPlotAxisFlags_LockMin | ImPlotAxisFlags_LockMax | ImPlotAxisFlags_NoTickLabels | ImPlotAxisFlags_NoHighlight;
-                    ImPlotAxisFlags xAxisFlags = ImPlotAxisFlags_NoTickLabels | ImPlotAxisFlags_NoLabel | ImPlotAxisFlags_NoTickMarks | ImPlotAxisFlags_NoHighlight;
-                    ImPlotFlags plotFlags = ImPlotFlags_NoLegend | ImPlotFlags_NoMouseText | ImPlotFlags_NoMenus;
+                    ImPlot::PushStyleColor(ImPlotCol_PlotBorder, {0, 128, 255, 1});
                     
-                    rawCpuUsageScrollBuffers[i].addPoint(t, rawCpuUserLoad[i] * 100);
-                    averagedCpuUsageScrollBuffers[i].addPoint(t, averagedCpuUserLoad[i] * 100);
+                    // Laptop memory plot
                     
-                    char titleFormatted[12];
-                    sprintf(titleFormatted, "CPU %lu Usage", i);
-                    if (ImPlot::BeginPlot(titleFormatted, plotSize, plotFlags))
+                    static ScrollingBuffer memScrollBuffer;
+                    
+                    memScrollBuffer.addPoint(t, gcsMemUsedInt / 1e6f);
+                    
+                    if (ImPlot::BeginPlot("GCS Virtual Memory", {statsWindowWidth, 140}, memoryPlotFlags))
                     {
                         
-                        ImPlot::SetupAxes("##", "##", xAxisFlags, yAxisFlags);
+                        ImPlot::SetupAxes("Time (s)", "Memory", 
+                                memoryPlotXAxisFlags, 
+                                memoryPlotYAxisFlags);
                         ImPlot::SetupAxisLimits(ImAxis_X1, t - HISTORY * 0.9f, t + HISTORY * 0.1f, ImGuiCond_Always);
-                        ImPlot::SetupAxisLimits(ImAxis_Y1, 0, 100, ImGuiCond_Always);
+                        ImPlot::SetupAxisLimits(ImAxis_Y1, 0, gcsTotalVirtualMem / 1e6f, ImGuiCond_Always);
                         
-                        char rawPlotNameFormatted[16];
-                        sprintf(rawPlotNameFormatted, "Raw CPU %lu Usage", i);
-                        ImPlot::PlotScatter(rawPlotNameFormatted, &rawCpuUsageScrollBuffers[i].m_data[0].x, &rawCpuUsageScrollBuffers[i].m_data[0].y, 
-                                rawCpuUsageScrollBuffers[i].m_data.size(), 0, rawCpuUsageScrollBuffers[i].m_offset, 2* sizeof(float));
-                        
-                        char averagedPlotNameFormatted[21];
-                        sprintf(averagedPlotNameFormatted, "Averaged CPU %lu Usage", i);
-                        ImPlot::PlotLine(averagedPlotNameFormatted, &averagedCpuUsageScrollBuffers[i].m_data[0].x, &averagedCpuUsageScrollBuffers[i].m_data[0].y, 
-                                averagedCpuUsageScrollBuffers[i].m_data.size(), 0, averagedCpuUsageScrollBuffers[i].m_offset, 2* sizeof(float));
+                        ImPlot::PlotLine("Cpu Usage", &memScrollBuffer.m_data[0].x, &memScrollBuffer.m_data[0].y, 
+                                memScrollBuffer.m_data.size(), 0, memScrollBuffer.m_offset, 2* sizeof(float));
                         
                         ImPlot::EndPlot();
                     }
                     
+                    ImPlot::PopStyleColor();
+                    
+                    // Laptop Cpu plots
+                    
+                    ImPlot::PushStyleVar(ImPlotStyleVar_MarkerSize, 1);
+                    
+                    ImPlot::PushStyleColor(ImPlotCol_PlotBorder, {255, 128, 0, 1});
+                    
+                    static std::vector<ScrollingBuffer> rawCpuUsageScrollBuffers(4), averagedCpuUsageScrollBuffers(4);
+                    
+                    for (size_t i = 0; i < 4; i++) {
+                        
+                        if (i == 1 || i == 3)
+                            ImGui::SameLine();
+                        
+                        ImVec2 plotSize(statsWindowWidth / 2, 140);
+                        
+                        ImPlotAxisFlags yAxisFlags = ImPlotAxisFlags_LockMin | ImPlotAxisFlags_LockMax | ImPlotAxisFlags_NoTickLabels | ImPlotAxisFlags_NoHighlight;
+                        ImPlotAxisFlags xAxisFlags = ImPlotAxisFlags_NoTickLabels | ImPlotAxisFlags_NoLabel | ImPlotAxisFlags_NoTickMarks | ImPlotAxisFlags_NoHighlight;
+                        ImPlotFlags plotFlags = ImPlotFlags_NoLegend | ImPlotFlags_NoMouseText | ImPlotFlags_NoMenus | ImPlotFlags_NoFrame;
+                        
+                        rawCpuUsageScrollBuffers[i].addPoint(t, rawCpuUserLoad[i] * 100);
+                        averagedCpuUsageScrollBuffers[i].addPoint(t, averagedCpuUserLoad[i] * 100);
+                        
+                        char titleFormatted[12];
+                        sprintf(titleFormatted, "CPU %lu Usage", i);
+                        if (ImPlot::BeginPlot(titleFormatted, plotSize, plotFlags))
+                        {
+                            
+                            ImPlot::SetupAxes("##", "##", xAxisFlags, yAxisFlags);
+                            ImPlot::SetupAxisLimits(ImAxis_X1, t - HISTORY * 0.9f, t + HISTORY * 0.1f, ImGuiCond_Always);
+                            ImPlot::SetupAxisLimits(ImAxis_Y1, 0, 100, ImGuiCond_Always);
+                            
+                            char rawPlotNameFormatted[16];
+                            sprintf(rawPlotNameFormatted, "Raw CPU %lu Usage", i);
+                            ImPlot::PlotScatter(rawPlotNameFormatted, &rawCpuUsageScrollBuffers[i].m_data[0].x, &rawCpuUsageScrollBuffers[i].m_data[0].y, 
+                                    rawCpuUsageScrollBuffers[i].m_data.size(), 0, rawCpuUsageScrollBuffers[i].m_offset, 2* sizeof(float));
+                            
+                            char averagedPlotNameFormatted[21];
+                            sprintf(averagedPlotNameFormatted, "Averaged CPU %lu Usage", i);
+                            ImPlot::PlotLine(averagedPlotNameFormatted, &averagedCpuUsageScrollBuffers[i].m_data[0].x, &averagedCpuUsageScrollBuffers[i].m_data[0].y, 
+                                    averagedCpuUsageScrollBuffers[i].m_data.size(), 0, averagedCpuUsageScrollBuffers[i].m_offset, 2* sizeof(float));
+                            
+                            ImPlot::EndPlot();
+                        }
+                        
+                    }
+                    
+                    ImPlot::PopStyleColor();
+                    
+                    ImPlot::PopStyleVar();
+                    
                 }
+                
+                ImGui::Separator();
+                
+                {
+                    
+                    ImGui::Text("OBC Resources");
+                    
+                    std::vector<double> rawObcCpuUserLoadVal = rawObcCpuUserLoad.get();
+                    std::vector<double> averagedObcCpuUserLoadVal = averagedObcCpuUserLoad.get();
+                    
+                    uint64_t obcMemUsedInt = obcMemUsed.get();
+                    
+                    /*for (int i = 0; i < 1; i++)
+                    {
+                        ImGui::Text("Cpu #%d user load: %f%%", i, cpuLoad[i] * 100);
+                        ImGui::Text("Cpu #%d system load: %f%%", i, cpuLoad[i] * 100);
+                    }
+                    
+                    ImGui::Text("Virtual memory used: %d MB / %d MB", (int)(obcMemUsedInt / 1e6), (int) (obcTotalVirtualMem / 1e6));
+                    */
+                
+                    if (obcMemUsedInt / obcTotalVirtualMem > 0.95)
+                    {
+                        ROS_INFO("OBC virtual memory in use exceeded 95%% (%lu / %lu)! Killing process.", obcMemUsedInt, obcTotalVirtualMem);
+                        return 1;
+                    }
+                    
+                    static float t = 0.0f;
+                    const static float HISTORY = 10.0f;
+                    t += frameDurationMillis / 1e3f;
+                    
+                    // OBC memory plot
+                    
+                    ImPlot::PushStyleColor(ImPlotCol_PlotBorder, {0, 128, 255, 1});
+                    
+                    static ScrollingBuffer memScrollBuffer;
+                    
+                    memScrollBuffer.addPoint(t, obcMemUsedInt / 1e6f);
+                    
+                    if (ImPlot::BeginPlot("OBC Virtual Memory", {statsWindowWidth, 150}, memoryPlotFlags))
+                    {
+                        
+                        ImPlot::SetupAxes("Time (s)", "Memory", 
+                                memoryPlotXAxisFlags, 
+                                memoryPlotYAxisFlags);
+                        ImPlot::SetupAxisLimits(ImAxis_X1, t - HISTORY * 0.9f, t + HISTORY * 0.1f, ImGuiCond_Always);
+                        ImPlot::SetupAxisLimits(ImAxis_Y1, 0, 500, ImGuiCond_Always);
+                        
+                        ImPlot::PlotLine("OBC Virtual Memory", &memScrollBuffer.m_data[0].x, &memScrollBuffer.m_data[0].y, 
+                                memScrollBuffer.m_data.size(), 0, memScrollBuffer.m_offset, 2* sizeof(float));
+                        
+                        ImPlot::EndPlot();
+                    }
+                    
+                    ImPlot::PopStyleColor();
+                    
+                    // OBC Cpu plot
+                    
+                    
+                    {
+                        ImPlot::PushStyleVar(ImPlotStyleVar_MarkerSize, 1);
+                    
+                        ImPlot::PushStyleColor(ImPlotCol_PlotBorder, {255, 128, 0, 1});
+                        
+                        ImVec2 plotSize(statsWindowWidth, 150);
+                        
+                        ImPlotAxisFlags yAxisFlags = ImPlotAxisFlags_LockMin | ImPlotAxisFlags_LockMax | ImPlotAxisFlags_NoHighlight;
+                        ImPlotAxisFlags xAxisFlags = ImPlotAxisFlags_NoTickLabels | ImPlotAxisFlags_NoLabel | ImPlotAxisFlags_NoTickMarks | ImPlotAxisFlags_NoHighlight;
+                        ImPlotFlags plotFlags = ImPlotFlags_NoLegend | ImPlotFlags_NoMouseText | ImPlotFlags_NoMenus | ImPlotFlags_NoFrame;
+                        
+                        static ScrollingBuffer rawCpuUsageScrollBuffer, averagedCpuUsageScrollBuffer;
+                        
+                        rawCpuUsageScrollBuffer.addPoint(t, rawObcCpuUserLoadVal[0] * 100);
+                        averagedCpuUsageScrollBuffer.addPoint(t, averagedObcCpuUserLoadVal[0] * 100);
+                        
+                        if (ImPlot::BeginPlot("OBC Cpu Usage", plotSize, plotFlags))
+                        {
+                            
+                            ImPlot::SetupAxes("Time (s)", "Cpu Usage (%)", xAxisFlags, yAxisFlags);
+                            ImPlot::SetupAxisLimits(ImAxis_X1, t - HISTORY * 0.9f, t + HISTORY * 0.1f, ImGuiCond_Always);
+                            ImPlot::SetupAxisLimits(ImAxis_Y1, 0, 100, ImGuiCond_Always);
+                            
+                            ImPlot::PlotScatter("Raw OBC CPU Usage", &rawCpuUsageScrollBuffer.m_data[0].x, &rawCpuUsageScrollBuffer.m_data[0].y, 
+                                    rawCpuUsageScrollBuffer.m_data.size(), 0, rawCpuUsageScrollBuffer.m_offset, 2 * sizeof(float));
+                                
+                            ImPlot::PlotLine("Averaged OBC CPU Usage", &averagedCpuUsageScrollBuffer.m_data[0].x, &averagedCpuUsageScrollBuffer.m_data[0].y, 
+                                    averagedCpuUsageScrollBuffer.m_data.size(), 0, averagedCpuUsageScrollBuffer.m_offset, 2 * sizeof(float));
+                            
+                            ImPlot::EndPlot();
+                        }
+                        
+                        ImPlot::PopStyleVar();
+                    }
+                    
+                }
+                
+                ImPlot::PopStyleColor();
                 
                 ImPlot::PopStyleVar();
                 
-            }
-            
-            ImGui::Separator();
-            
-            {
-                
-                ImGui::Text("OBC Resources");
-                
-                std::vector<double> cpuLoad = rawObcCpuUserLoad.get();
-                
-                uint64_t obcMemUsedInt = obcMemUsed.get();
-                
-                /*for (int i = 0; i < 1; i++)
-                {
-                    ImGui::Text("Cpu #%d user load: %f%%", i, cpuLoad[i] * 100);
-                    ImGui::Text("Cpu #%d system load: %f%%", i, cpuLoad[i] * 100);
-                }
-                
-                ImGui::Text("Virtual memory used: %d MB / %d MB", (int)(obcMemUsedInt / 1e6), (int) (obcTotalVirtualMem / 1e6));
-                */
-               
-                if (obcMemUsedInt / obcTotalVirtualMem > 0.95)
-                {
-                    ROS_INFO("OBC virtual memory in use exceeded 95%% (%lu / %lu)! Killing process.", obcMemUsedInt, obcTotalVirtualMem);
-                    return 1;
-                }
-                
-                static float t = 0.0f;
-                const static float HISTORY = 10.0f;
-                t += frameDurationMillis / 1e3f;
-                
-                // OBC memory plot
-                
-                static ScrollingBuffer memScrollBuffer;
-                
-                memScrollBuffer.addPoint(t, obcMemUsedInt / 1e6f);
-                
-                if (ImPlot::BeginPlot("OBC Virtual Memory", {-1, 150}, memoryPlotFlags))
-                {
-                    
-                    ImPlot::SetupAxes("Time (s)", "Memory", 
-                            memoryPlotXAxisFlags, 
-                            memoryPlotYAxisFlags);
-                    ImPlot::SetupAxisLimits(ImAxis_X1, t - HISTORY * 0.9f, t + HISTORY * 0.1f, ImGuiCond_Always);
-                    ImPlot::SetupAxisLimits(ImAxis_Y1, 0, obcTotalVirtualMem / 1e6f, ImGuiCond_Always);
-                    
-                    ImPlot::PlotLine("OBC Virtual Memory", &memScrollBuffer.m_data[0].x, &memScrollBuffer.m_data[0].y, 
-                            memScrollBuffer.m_data.size(), 0, memScrollBuffer.m_offset, 2* sizeof(float));
-                    
-                    ImPlot::EndPlot();
-                }
-                
-                // OBC Cpu plot
-                
-                
-                {
-                    ImVec2 plotSize(-1, 150);
-                    
-                    ImPlotAxisFlags yAxisFlags = ImPlotAxisFlags_LockMin | ImPlotAxisFlags_LockMax | ImPlotAxisFlags_NoHighlight;
-                    ImPlotAxisFlags xAxisFlags = ImPlotAxisFlags_NoTickLabels | ImPlotAxisFlags_NoLabel | ImPlotAxisFlags_NoTickMarks | ImPlotAxisFlags_NoHighlight;
-                    ImPlotFlags plotFlags = ImPlotFlags_NoLegend | ImPlotFlags_NoMouseText | ImPlotFlags_NoMenus;
-                    
-                    static ScrollingBuffer rawCpu1UsageScrollBuffer;
-                    
-                    rawCpu1UsageScrollBuffer.addPoint(t, cpuLoad[0] * 100);
-                    
-                    if (ImPlot::BeginPlot("OBC Cpu Usage", plotSize, plotFlags))
-                    {
-                        
-                        ImPlot::SetupAxes("Time (s)", "Cpu Usage (%)", xAxisFlags, yAxisFlags);
-                        ImPlot::SetupAxisLimits(ImAxis_X1, t - HISTORY * 0.9f, t + HISTORY * 0.1f, ImGuiCond_Always);
-                        ImPlot::SetupAxisLimits(ImAxis_Y1, 0, 100, ImGuiCond_Always);
-                        
-                        ImPlot::PlotLine("Raw Cpu Usage (%)", &rawCpu1UsageScrollBuffer.m_data[0].x, &rawCpu1UsageScrollBuffer.m_data[0].y, 
-                                rawCpu1UsageScrollBuffer.m_data.size(), 0, rawCpu1UsageScrollBuffer.m_offset, 2* sizeof(float));
-                              
-                        
-                        
-                        ImPlot::EndPlot();
-                    }
-                }
+                ImGui::End();
                 
             }
             
-            ImGui::End();
+            // MAVROS Window
+            
+            if (ImGui::Begin("MAVROS")) {
+                
+                ImGui::Text("Connected: %d", currentState.get().connected);
+                
+                geometry_msgs::PoseStamped pose = uavPose.get();
+                
+                ImGui::Text("Rotation: x %lf, y %lf, z %lf", pose.pose.orientation.x, pose.pose.orientation.y, pose.pose.orientation.z);
+                
+                ImGui::End();
+            }
+            
+            
             
             imGuiEndFrame();
         }
@@ -592,5 +571,5 @@ namespace m_rosuam::gui {
 
 int main(int argc, char** argv)
 {
-    m_rosuam::gui::run(argc, argv);
+    mrosuam::gui::run(argc, argv);
 }

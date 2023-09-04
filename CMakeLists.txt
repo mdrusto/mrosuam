@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.0.2)
 project(mrosuam)
 
+cmake_policy(SET CMP0054 NEW)
+
 # Find which machine this is - MACHINE_OBC is true if this is the on-board computer
 message("Hostname is: $ENV{ROS_HOSTNAME}")
 if ($ENV{ROS_HOSTNAME} STREQUAL "halaena")
@@ -126,9 +128,9 @@ endif()
 ## CATKIN_DEPENDS: catkin_packages dependent projects also need
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
-#  INCLUDE_DIRS include
-#  LIBRARIES rosuam
-#  CATKIN_DEPENDS roscpp std_msgs
+  INCLUDE_DIRS include
+  LIBRARIES rosuam
+  CATKIN_DEPENDS roscpp std_msgs
 #  DEPENDS system_lib
 )
 
@@ -152,6 +154,7 @@ include_directories(
 ## as an example, code may need to be generated before libraries
 ## either from message generation or dynamic reconfigure
 # add_dependencies(${PROJECT_NAME} ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+
 
 if(NOT MACHINE_OBC)
   add_subdirectory(src/gui)
