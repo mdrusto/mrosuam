@@ -51,7 +51,7 @@ namespace mrosuam::ResourceMonitor
 		ros::SingleThreadedSpinner spinner;
 		ros::Rate loopRate(20);
 		
-		ROS_INFO("Started resource monitor on %s", hostname);
+		ROS_INFO("Started resource monitor on %s", hostname.c_str());
 		
 		{
 			std::ifstream initStatStream("/proc/stat", std::ios_base::in);

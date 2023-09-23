@@ -1,7 +1,9 @@
+#include "mrosuam/gui/ImGuiWindow.h"
 #include "mrosuam/gui/ROSTopicVariable.h"
+#include "mrosuam/gui/ScrollingBuffer.h"
+#include "mrosuam/gui/ConnectionStatus.h"
 
 #include <chrono>
-#include <mutex>
 
 #include <sys/types.h>
 #include <sys/sysinfo.h>
@@ -9,6 +11,7 @@
 #include <ros/ros.h>
 
 #include <mavros_msgs/State.h>
+#include <mavros_msgs/SetMode.h>
 
 #include <geometry_msgs/PoseStamped.h>
 
@@ -19,20 +22,10 @@
 
 #include <jpgd.h>
 
-#include <imgui.h>
-#include <imgui_impl_glfw.h>
-#include <imgui_impl_opengl2.h>
-
-#include <implot.h>
-
-#include <glad/glad.h>
-
-#include <GLFW/glfw3.h>
-
-#pragma comment(lib, "legacy_stdio_definitions");
 
 namespace mrosuam::gui {
     
+    ImGuiWindow window;
     
     ROSTopicVariable<mavros_msgs::State, mavros_msgs::State> currentState([] (mavros_msgs::State::ConstPtr state) -> mavros_msgs::State { return *state; });
     
@@ -48,167 +41,74 @@ namespace mrosuam::gui {
     ROSTopicVariable<uint64_t, std_msgs::UInt64> obcMemUsed([] (std_msgs::UInt64::ConstPtr msg) -> uint64_t { return msg->data; });
     ROSTopicVariable<sensor_msgs::CompressedImage, sensor_msgs::CompressedImage> cameraImage([] (sensor_msgs::CompressedImage::ConstPtr msg) -> sensor_msgs::CompressedImage { return *msg; });
     
-    AtomicVariable<geometry_msgs::PoseStamped> uavPose;
+    bool obcConnected, cameraConnected, fcuConnected;
     
-    std::mutex imageMutex;
-    //sensor_msgs::CompressedImage currentImage;
-    //int numTimesSet = 0;
-
-    const ImVec4 CLEAR_COLOUR(0.45f, 0.55f, 0.60f, 1.00f);
-
-    static GLFWwindow* s_window = nullptr;
-
-    static void glfw_error_callback(int error, const char* description)
-    {
-        fprintf(stderr, "Glfw Error %d: %s\n", error, description);
-    }
-    
-    void uavPoseCallback(const geometry_msgs::PoseStamped::ConstPtr& pose)
-    {
-        uavPose = *pose;
-    }
-
-    bool imGuiSetupWindow()
-    {
-        glfwSetErrorCallback(glfw_error_callback);
+    ConnectionStatus<std_msgs::UInt64> obcConnectionStatus("/mrosuam/resources/obc/virtual_mem_used", 1.0f);
+    ConnectionStatus<sensor_msgs::CompressedImage> cameraConnectionStatus("/raspicam_node/image/compressed", 1.0f);
+    ConnectionStatus<mavros_msgs::State> fcuConnectionStatus("/mavros/state", 1.0f);
         
-        std::cout << "Setting up window" << std::endl;
-        
-        if (glfwInit() == GLFW_FALSE)
-            return 1;
-
-        //const char* glsl_version = "#version 130";
-        glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 2);
-        glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 1);
-
-        s_window = glfwCreateWindow(1800, 1000, "Rosuam test window", NULL, NULL);
-        if (s_window == nullptr)
-            return 1;
-        
-        glfwMakeContextCurrent(s_window);
-        glfwSwapInterval(0);
-
-        if (!gladLoadGL())
-            return 1;
-
-        IMGUI_CHECKVERSION();
-
-        ImGui::CreateContext();
-        ImPlot::CreateContext();
-
-        ImGuiIO& io = ImGui::GetIO();
-        (void)io;
-        io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
-
-        ImGui_ImplGlfw_InitForOpenGL(s_window, true);
-        ImGui_ImplOpenGL2_Init();
-
-        ImGuiStyle& style = ImGui::GetStyle();
-        style.WindowRounding = 0.0f;
-        style.Colors[ImGuiCol_WindowBg].w = 1.0f;
-        
-        return 0;
-    }
-
-    void imGuiBeginFrame()
-    {
-        glfwPollEvents();
-
-        ImGui_ImplOpenGL2_NewFrame();
-        ImGui_ImplGlfw_NewFrame();
-        ImGui::NewFrame();
-        
-        ImGuiDockNodeFlags dockspaceFlags = ImGuiDockNodeFlags_None;
-        
-        ImGuiWindowFlags dockWindowFlags = ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoTitleBar;
-        dockWindowFlags |= ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove;
-        dockWindowFlags |= ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus;
-        static bool dockspaceOpen = true;
-        
-        ImGuiViewport* mainViewport = ImGui::GetMainViewport();
-        ImGui::SetNextWindowPos(mainViewport->Pos);
-        ImGui::SetNextWindowSize(mainViewport->Size);
-        ImGui::SetNextWindowViewport(mainViewport->ID);
-        
-        ImGui::Begin("Dockspace window", &dockspaceOpen, dockWindowFlags);
-        
-        ImGuiID dockspaceID = ImGui::GetID("MyDockspace");
-        ImGui::DockSpace(dockspaceID, {0, 0}, dockspaceFlags);
-    }
-
-    void imGuiEndFrame()
-    {
-        // End dockspace window
-        ImGui::End();
-        
-        ImGui::Render();
-        int display_w, display_h;
-        glfwGetFramebufferSize(s_window, &display_w, &display_h);
-        glViewport(0, 0, display_w, display_h);
-        glClearColor(CLEAR_COLOUR.x * CLEAR_COLOUR.w, CLEAR_COLOUR.y * CLEAR_COLOUR.w, CLEAR_COLOUR.z * CLEAR_COLOUR.w, CLEAR_COLOUR.w);
-        glClear(GL_COLOR_BUFFER_BIT);
-        ImGui_ImplOpenGL2_RenderDrawData(ImGui::GetDrawData());
-
-        GLFWwindow* backup_current_context = glfwGetCurrentContext();
-        ImGui::UpdatePlatformWindows();
-        ImGui::RenderPlatformWindowsDefault();
-        glfwMakeContextCurrent(backup_current_context);
-
-        glfwSwapBuffers(s_window);
-    }
-
-    void imGuiDestroyWindow()
-    {
-        ImGui_ImplOpenGL2_Shutdown();
-        ImGui_ImplGlfw_Shutdown();
-
-        ImGui::DestroyContext();
-
-        glfwDestroyWindow(s_window);
-        glfwTerminate();
-    }
-    
-    struct ScrollingBuffer
-    {
-        int m_maxSize;
-        int m_offset;
-        ImVector<ImVec2> m_data;
-        
-        ScrollingBuffer(int max_size = 1000)
-        {
-            m_maxSize = max_size;
-            m_offset = 0;
-            m_data.reserve(m_maxSize);
-        }
-        
-        void addPoint(float x, float y)
-        {
-            if (m_data.size() < m_maxSize)
-                m_data.push_back(ImVec2(x, y));
-            else
-            {
-                m_data[m_offset] = ImVec2(x, y);
-                m_offset = (m_offset + 1) % m_maxSize;
-            }
-        }
-        
-        void erase()
-        {
-            if (m_data.size() > 0)
-            {
-                m_data.shrink(0);
-                m_offset = 0;
-            }
-        }
-    };
-    
     int run(int argc, char** argv)
     {
         ros::init(argc, argv, "gui");
         
+        ros::NodeHandle nodeHandle;
+        
+        // Initialize topic variables
+        
+        currentState.initialize(nodeHandle, "/mavros/state", 10);
+        rawGcsCpuUserLoad.initialize(nodeHandle, "/mrosuam/resources/gcs/raw/cpu_user_load", 10);
+        rawGcsCpuSystemLoad.initialize(nodeHandle, "/mrosuam/resources/gcs/raw/cpu_system_load", 10);
+        averagedGcsCpuUserLoad.initialize(nodeHandle, "/mrosuam/resources/gcs/averaged/cpu_user_load", 10);
+        averagedGcsCpuSystemLoad.initialize(nodeHandle, "/mrosuam/resources/gcs/averaged/cpu_system_load", 10);
+        gcsMemUsed.initialize(nodeHandle, "/mrosuam/resources/gcs/virtual_mem_used", 10);
+        rawObcCpuUserLoad.initialize(nodeHandle, "/mrosuam/resources/obc/raw/cpu_user_load", 10);
+        rawObcCpuSystemLoad.initialize(nodeHandle, "/mrosuam/resources/obc/raw/cpu_system_load", 10);
+        averagedObcCpuUserLoad.initialize(nodeHandle, "/mrosuam/resources/obc/averaged/cpu_user_load", 10);
+        averagedObcCpuSystemLoad.initialize(nodeHandle, "/mrosuam/resources/obc/averaged/cpu_system_load", 10);
+        obcMemUsed.initialize(nodeHandle, "/mrosuam/resources/obc/virtual_mem_used", 10);
+        cameraImage.initialize(nodeHandle, "/raspicam_node/image/compressed", 10);
+        
+        obcConnectionStatus.initialize(nodeHandle);
+        cameraConnectionStatus.initialize(nodeHandle);
+        fcuConnectionStatus.initialize(nodeHandle);
+        
+        ros::AsyncSpinner spinner(4);
+        
+        spinner.start();
+        
+        ros::ServiceClient setModeClient = nodeHandle.serviceClient<mavros_msgs::SetMode>("/mavros/set_mode");
+        
+        ros::Publisher localPosePub = nodeHandle.advertise<geometry_msgs::PoseStamped>("mavros/setpoint_position/local", 10);
+        
+        geometry_msgs::PoseStamped pose;
+        pose.pose.position.x = 0;
+        pose.pose.position.y = 0;
+        pose.pose.position.z = 2;
+        
+        for (int i = 0; i < 100; i++)
+        {
+            localPosePub.publish(pose);
+            ros::Duration(0.1f).sleep();
+        }
+        
+        
+        mavros_msgs::SetMode offboardSetMode;
+        offboardSetMode.request.custom_mode = "OFFBOARD";
+        
+        while (currentState.get().mode != "OFFBOARD")
+        {
+            ROS_INFO("Tried setting offboard mode - %s, %s response", 
+                    setModeClient.call(offboardSetMode) ? "sent" : "not sent", 
+                    offboardSetMode.response.mode_sent ? "with" : "without");
+            
+            ros::Duration(5.0f).sleep();
+        }
+        
+        
+        
         ROS_INFO("Starting GUI");
         
-        if (imGuiSetupWindow() > 0)
+        if (window.setupWindow() > 0)
             return 1;
         
         GLuint renderedTexture;
@@ -230,29 +130,7 @@ namespace mrosuam::gui {
             return 1;
         }
         
-        ros::NodeHandle nodeHandle;
-        
-        currentState.initialize(nodeHandle, "/mavros/state", 10);
-        
-        rawGcsCpuUserLoad.initialize(nodeHandle, "/mrosuam/resources/gcs/raw/cpu_user_load", 10);
-        rawGcsCpuSystemLoad.initialize(nodeHandle, "/mrosuam/resources/gcs/raw/cpu_system_load", 10);
-        averagedGcsCpuUserLoad.initialize(nodeHandle, "/mrosuam/resources/gcs/averaged/cpu_user_load", 10);
-        averagedGcsCpuSystemLoad.initialize(nodeHandle, "/mrosuam/resources/gcs/averaged/cpu_system_load", 10);
-        gcsMemUsed.initialize(nodeHandle, "/mrosuam/resources/gcs/virtual_mem_used", 10);
-        rawObcCpuUserLoad.initialize(nodeHandle, "/mrosuam/resources/obc/raw/cpu_user_load", 10);
-        rawObcCpuSystemLoad.initialize(nodeHandle, "/mrosuam/resources/obc/raw/cpu_system_load", 10);
-        averagedObcCpuUserLoad.initialize(nodeHandle, "/mrosuam/resources/obc/averaged/cpu_user_load", 10);
-        averagedObcCpuSystemLoad.initialize(nodeHandle, "/mrosuam/resources/obc/averaged/cpu_system_load", 10);
-        obcMemUsed.initialize(nodeHandle, "/mrosuam/resources/obc/virtual_mem_used", 10);
-        cameraImage.initialize(nodeHandle, "/raspicam_node/image/compressed", 10);
-        
-        
-        ros::Subscriber uavPoseSubscriber = nodeHandle.subscribe<geometry_msgs::PoseStamped>("/mavros/local_position/pose", 10, uavPoseCallback);
-        
-        ros::AsyncSpinner spinner(4);
-        
-        
-        spinner.start();
+        // Determine total amount of memory on GCS and OBC
         
         struct sysinfo gcsMemInfo;
         sysinfo(&gcsMemInfo);
@@ -270,7 +148,7 @@ namespace mrosuam::gui {
         
         // Main GUI loop
         
-        while (!glfwWindowShouldClose(s_window))
+        while (!window.shouldClose())
         {
             float frameDurationMillis;
             
@@ -282,16 +160,20 @@ namespace mrosuam::gui {
                 lastFrameTime = currentFrameTime;
             }
             
-            imGuiBeginFrame();
+            window.beginFrame();
+            
+            obcConnected = obcConnectionStatus.checkStatus();
+            cameraConnected = cameraConnectionStatus.checkStatus();
+            fcuConnected = fcuConnectionStatus.checkStatus();
             
             //ImGui::ShowDemoWindow();
+            //ImPlot::ShowDemoWindow();
             
             // Camera/CV window
             
             if (ImGui::Begin("Camera"))
             {
                 
-                imageMutex.lock();
                 std::vector<uint8_t> imageDataVec = cameraImage.get().data;
                 unsigned char* imageDataPtr = (unsigned char*)&imageDataVec[0];
                 
@@ -315,9 +197,11 @@ namespace mrosuam::gui {
                 //ImGui::Text("Frame ID: %s", currentImage.get().header.frame_id.c_str());
                 //ImGui::Text("Timestamp: %d", currentImage.get().header.stamp.nsec);
                 
-                imageMutex.unlock();
+                //ImGui::Text("Error: %d", glGetError());
                 
-                ImGui::Text("Error: %d", glGetError());
+                ImGui::Text("OBC connected: %d", obcConnected);
+                ImGui::Text("Camera connected: %d", cameraConnected);
+                ImGui::Text("FCU connected: %d", fcuConnected);
                 
                 ImGui::End();
                 
@@ -342,6 +226,10 @@ namespace mrosuam::gui {
                 
                 ImPlot::PushStyleVar(ImPlotStyleVar_PlotPadding, ImVec2(1, 1));
                 
+                ImPlotTextFlags textFlags = ImPlotTextFlags_None;
+                
+                //ImPlot::PushStyleVar(ImPlotStyleVar_)
+                
                 {
                     
                     ImGui::Text("GCS Resources");
@@ -363,13 +251,13 @@ namespace mrosuam::gui {
                     
                     ImPlot::PushStyleColor(ImPlotCol_PlotBorder, {0, 128, 255, 1});
                     
-                    // Laptop memory plot
+                    // GCS memory plot
                     
                     static ScrollingBuffer memScrollBuffer;
                     
                     memScrollBuffer.addPoint(t, gcsMemUsedInt / 1e6f);
                     
-                    if (ImPlot::BeginPlot("GCS Virtual Memory", {statsWindowWidth, 140}, memoryPlotFlags))
+                    if (ImPlot::BeginPlot("GCS Virtual Memory", {statsWindowWidth, 120}, memoryPlotFlags))
                     {
                         
                         ImPlot::SetupAxes("Time (s)", "Memory", 
@@ -381,12 +269,15 @@ namespace mrosuam::gui {
                         ImPlot::PlotLine("Cpu Usage", &memScrollBuffer.m_data[0].x, &memScrollBuffer.m_data[0].y, 
                                 memScrollBuffer.m_data.size(), 0, memScrollBuffer.m_offset, 2* sizeof(float));
                         
+                        std::string text = std::to_string(gcsMemUsedInt / (int)1e6) + "/6000";
+                        ImPlot::PlotText(text.c_str(), t - HISTORY * 0.7f, 5400, {0, 0}, textFlags);
+                        
                         ImPlot::EndPlot();
                     }
                     
                     ImPlot::PopStyleColor();
                     
-                    // Laptop Cpu plots
+                    // GCS CPU plots
                     
                     ImPlot::PushStyleVar(ImPlotStyleVar_MarkerSize, 1);
                     
@@ -427,6 +318,9 @@ namespace mrosuam::gui {
                             ImPlot::PlotLine(averagedPlotNameFormatted, &averagedCpuUsageScrollBuffers[i].m_data[0].x, &averagedCpuUsageScrollBuffers[i].m_data[0].y, 
                                     averagedCpuUsageScrollBuffers[i].m_data.size(), 0, averagedCpuUsageScrollBuffers[i].m_offset, 2* sizeof(float));
                             
+                            std::string text = std::to_string((int)(averagedCpuUserLoad[i] * 100)) + "%";
+                            ImPlot::PlotText(text.c_str(), t - HISTORY * 0.8f, 90, {0, 0}, textFlags);
+                            
                             ImPlot::EndPlot();
                         }
                         
@@ -448,15 +342,6 @@ namespace mrosuam::gui {
                     std::vector<double> averagedObcCpuUserLoadVal = averagedObcCpuUserLoad.get();
                     
                     uint64_t obcMemUsedInt = obcMemUsed.get();
-                    
-                    /*for (int i = 0; i < 1; i++)
-                    {
-                        ImGui::Text("Cpu #%d user load: %f%%", i, cpuLoad[i] * 100);
-                        ImGui::Text("Cpu #%d system load: %f%%", i, cpuLoad[i] * 100);
-                    }
-                    
-                    ImGui::Text("Virtual memory used: %d MB / %d MB", (int)(obcMemUsedInt / 1e6), (int) (obcTotalVirtualMem / 1e6));
-                    */
                 
                     if (obcMemUsedInt / obcTotalVirtualMem > 0.95)
                     {
@@ -488,13 +373,15 @@ namespace mrosuam::gui {
                         ImPlot::PlotLine("OBC Virtual Memory", &memScrollBuffer.m_data[0].x, &memScrollBuffer.m_data[0].y, 
                                 memScrollBuffer.m_data.size(), 0, memScrollBuffer.m_offset, 2* sizeof(float));
                         
+                        std::string text = std::to_string(obcMemUsedInt / (int)1e6) + "/500";
+                        ImPlot::PlotText(text.c_str(), t - HISTORY * 0.7f, 450, {0, 0}, textFlags);
+                        
                         ImPlot::EndPlot();
                     }
                     
                     ImPlot::PopStyleColor();
                     
                     // OBC Cpu plot
-                    
                     
                     {
                         ImPlot::PushStyleVar(ImPlotStyleVar_MarkerSize, 1);
@@ -525,6 +412,9 @@ namespace mrosuam::gui {
                             ImPlot::PlotLine("Averaged OBC CPU Usage", &averagedCpuUsageScrollBuffer.m_data[0].x, &averagedCpuUsageScrollBuffer.m_data[0].y, 
                                     averagedCpuUsageScrollBuffer.m_data.size(), 0, averagedCpuUsageScrollBuffer.m_offset, 2 * sizeof(float));
                             
+                            std::string text = std::to_string((int)(averagedObcCpuUserLoadVal[0] * 100)) + "%";
+                            ImPlot::PlotText(text.c_str(), t - HISTORY * 0.8f, 90, {0, 0}, textFlags);
+                            
                             ImPlot::EndPlot();
                         }
                         
@@ -547,19 +437,13 @@ namespace mrosuam::gui {
                 
                 ImGui::Text("Connected: %d", currentState.get().connected);
                 
-                geometry_msgs::PoseStamped pose = uavPose.get();
-                
-                ImGui::Text("Rotation: x %lf, y %lf, z %lf", pose.pose.orientation.x, pose.pose.orientation.y, pose.pose.orientation.z);
-                
                 ImGui::End();
             }
             
-            
-            
-            imGuiEndFrame();
+            window.endFrame();
         }
         
-        imGuiDestroyWindow();
+        window.destroyWindow();
         
         spinner.stop();
         
