@@ -1,155 +1,198 @@
 #include "mrosuam/gui/ImGuiWindow.h"
-#include "mrosuam/gui/ROSTopicVariable.h"
+#include "mrosuam/gui/AtomicVariable.h"
 #include "mrosuam/gui/ScrollingBuffer.h"
-#include "mrosuam/gui/ConnectionStatus.h"
+//#include "mrosuam/gui/ConnectionStatus.h"
 
 #include <chrono>
 
 #include <sys/types.h>
 #include <sys/sysinfo.h>
 
-#include <ros/ros.h>
+#include <rclcpp/rclcpp.hpp>
 
-#include <mavros_msgs/State.h>
-#include <mavros_msgs/SetMode.h>
+#include <mavros_msgs/msg/state.hpp>
+#include <mavros_msgs/srv/set_mode.hpp>
 
-#include <geometry_msgs/PoseStamped.h>
+#include <geometry_msgs/msg/pose_stamped.hpp>
 
-#include <sensor_msgs/CompressedImage.h>
+#include <sensor_msgs/msg/compressed_image.hpp>
 
-#include <std_msgs/Float64MultiArray.h>
-#include <std_msgs/UInt64.h>
+#include <std_msgs/msg/float64_multi_array.hpp>
+#include <std_msgs/msg/u_int64.hpp>
 
 #include <jpgd.h>
 
 
+using namespace std::chrono_literals;
+
 namespace mrosuam::gui {
     
-    ImGuiWindow window;
-    
-    ROSTopicVariable<mavros_msgs::State, mavros_msgs::State> currentState([] (mavros_msgs::State::ConstPtr state) -> mavros_msgs::State { return *state; });
-    
-    ROSTopicVariable<std::vector<double>, std_msgs::Float64MultiArray> rawGcsCpuUserLoad([] (std_msgs::Float64MultiArray::ConstPtr msg) -> std::vector<double> { return msg->data; }, std::vector<double>(4));
-    ROSTopicVariable<std::vector<double>, std_msgs::Float64MultiArray> rawGcsCpuSystemLoad([] (std_msgs::Float64MultiArray::ConstPtr msg) -> std::vector<double> { return msg->data; }, std::vector<double>(4));
-    ROSTopicVariable<std::vector<double>, std_msgs::Float64MultiArray> averagedGcsCpuUserLoad([] (std_msgs::Float64MultiArray::ConstPtr msg) -> std::vector<double> { return msg->data; }, std::vector<double>(4));
-    ROSTopicVariable<std::vector<double>, std_msgs::Float64MultiArray> averagedGcsCpuSystemLoad([] (std_msgs::Float64MultiArray::ConstPtr msg) -> std::vector<double> { return msg->data; }, std::vector<double>(4));
-    ROSTopicVariable<uint64_t, std_msgs::UInt64> gcsMemUsed([] (std_msgs::UInt64::ConstPtr msg) -> uint64_t { return msg->data; });
-    ROSTopicVariable<std::vector<double>, std_msgs::Float64MultiArray> rawObcCpuUserLoad([] (std_msgs::Float64MultiArray::ConstPtr msg) -> std::vector<double> { return msg->data; }, std::vector<double>(1));
-    ROSTopicVariable<std::vector<double>, std_msgs::Float64MultiArray> rawObcCpuSystemLoad([] (std_msgs::Float64MultiArray::ConstPtr msg) -> std::vector<double> { return msg->data; }, std::vector<double>(1));
-    ROSTopicVariable<std::vector<double>, std_msgs::Float64MultiArray> averagedObcCpuUserLoad([] (std_msgs::Float64MultiArray::ConstPtr msg) -> std::vector<double> { return msg->data; }, std::vector<double>(1));
-    ROSTopicVariable<std::vector<double>, std_msgs::Float64MultiArray> averagedObcCpuSystemLoad([] (std_msgs::Float64MultiArray::ConstPtr msg) -> std::vector<double> { return msg->data; }, std::vector<double>(1));
-    ROSTopicVariable<uint64_t, std_msgs::UInt64> obcMemUsed([] (std_msgs::UInt64::ConstPtr msg) -> uint64_t { return msg->data; });
-    ROSTopicVariable<sensor_msgs::CompressedImage, sensor_msgs::CompressedImage> cameraImage([] (sensor_msgs::CompressedImage::ConstPtr msg) -> sensor_msgs::CompressedImage { return *msg; });
-    
-    bool obcConnected, cameraConnected, fcuConnected;
-    
-    ConnectionStatus<std_msgs::UInt64> obcConnectionStatus("/mrosuam/resources/obc/virtual_mem_used", 1.0f);
-    ConnectionStatus<sensor_msgs::CompressedImage> cameraConnectionStatus("/raspicam_node/image/compressed", 1.0f);
-    ConnectionStatus<mavros_msgs::State> fcuConnectionStatus("/mavros/state", 1.0f);
-        
-    int run(int argc, char** argv)
+    class Gui : public rclcpp::Node
     {
-        ros::init(argc, argv, "gui");
-        
-        ros::NodeHandle nodeHandle;
-        
-        // Initialize topic variables
-        
-        currentState.initialize(nodeHandle, "/mavros/state", 10);
-        rawGcsCpuUserLoad.initialize(nodeHandle, "/mrosuam/resources/gcs/raw/cpu_user_load", 10);
-        rawGcsCpuSystemLoad.initialize(nodeHandle, "/mrosuam/resources/gcs/raw/cpu_system_load", 10);
-        averagedGcsCpuUserLoad.initialize(nodeHandle, "/mrosuam/resources/gcs/averaged/cpu_user_load", 10);
-        averagedGcsCpuSystemLoad.initialize(nodeHandle, "/mrosuam/resources/gcs/averaged/cpu_system_load", 10);
-        gcsMemUsed.initialize(nodeHandle, "/mrosuam/resources/gcs/virtual_mem_used", 10);
-        rawObcCpuUserLoad.initialize(nodeHandle, "/mrosuam/resources/obc/raw/cpu_user_load", 10);
-        rawObcCpuSystemLoad.initialize(nodeHandle, "/mrosuam/resources/obc/raw/cpu_system_load", 10);
-        averagedObcCpuUserLoad.initialize(nodeHandle, "/mrosuam/resources/obc/averaged/cpu_user_load", 10);
-        averagedObcCpuSystemLoad.initialize(nodeHandle, "/mrosuam/resources/obc/averaged/cpu_system_load", 10);
-        obcMemUsed.initialize(nodeHandle, "/mrosuam/resources/obc/virtual_mem_used", 10);
-        cameraImage.initialize(nodeHandle, "/raspicam_node/image/compressed", 10);
-        
-        obcConnectionStatus.initialize(nodeHandle);
-        cameraConnectionStatus.initialize(nodeHandle);
-        fcuConnectionStatus.initialize(nodeHandle);
-        
-        ros::AsyncSpinner spinner(4);
-        
-        spinner.start();
-        
-        ros::ServiceClient setModeClient = nodeHandle.serviceClient<mavros_msgs::SetMode>("/mavros/set_mode");
-        
-        ros::Publisher localPosePub = nodeHandle.advertise<geometry_msgs::PoseStamped>("mavros/setpoint_position/local", 10);
-        
-        geometry_msgs::PoseStamped pose;
-        pose.pose.position.x = 0;
-        pose.pose.position.y = 0;
-        pose.pose.position.z = 2;
-        
-        for (int i = 0; i < 100; i++)
+    public:
+        Gui() : Node("mrosuam_gui")
         {
-            localPosePub.publish(pose);
-            ros::Duration(0.1f).sleep();
-        }
-        
-        
-        mavros_msgs::SetMode offboardSetMode;
-        offboardSetMode.request.custom_mode = "OFFBOARD";
-        
-        while (currentState.get().mode != "OFFBOARD")
-        {
-            ROS_INFO("Tried setting offboard mode - %s, %s response", 
-                    setModeClient.call(offboardSetMode) ? "sent" : "not sent", 
-                    offboardSetMode.response.mode_sent ? "with" : "without");
+            // Initialize topic variables
             
-            ros::Duration(5.0f).sleep();
+            stateSubscription = this->create_subscription<mavros_msgs::msg::State>("/mavros/state", 10, [this] (mavros_msgs::msg::State::ConstSharedPtr msg) -> void { mavrosState = *msg; });
+            rawGcsCpuUserLoadSubscription = this->create_subscription<std_msgs::msg::Float64MultiArray>("/mrosuam/resources/gcs/raw/cpu_user_load", 10, [this] (std_msgs::msg::Float64MultiArray::ConstSharedPtr msg) -> void { rawGcsCpuUserLoad = msg->data; });
+            rawGcsCpuSystemLoadSubscription = this->create_subscription<std_msgs::msg::Float64MultiArray>("/mrosuam/resources/gcs/raw/cpu_system_load", 10, [this] (std_msgs::msg::Float64MultiArray::ConstSharedPtr msg) -> void { rawGcsCpuSystemLoad = msg->data; });
+            averagedGcsCpuUserLoadSubscription = this->create_subscription<std_msgs::msg::Float64MultiArray>("/mrosuam/resources/gcs/averaged/cpu_user_load", 10, [this] (std_msgs::msg::Float64MultiArray::ConstSharedPtr msg) -> void { averagedGcsCpuUserLoad = msg->data; });
+            averagedGcsCpuSystemLoadSubscription = this->create_subscription<std_msgs::msg::Float64MultiArray>("/mrosuam/resources/gcs/averaged/cpu_system_load", 10, [this] (std_msgs::msg::Float64MultiArray::ConstSharedPtr msg) -> void { averagedGcsCpuSystemLoad = msg->data; });
+            gcsMemUsedSubscription = this->create_subscription<std_msgs::msg::UInt64>("/mrosuam/resources/gcs/virtual_mem_used", 10, [this] (std_msgs::msg::UInt64::ConstSharedPtr msg) -> void { gcsMemUsed = msg->data; });
+            rawObcCpuUserLoadSubscription = this->create_subscription<std_msgs::msg::Float64MultiArray>("/mrosuam/resources/obc/raw/cpu_user_load", 10, [this] (std_msgs::msg::Float64MultiArray::ConstSharedPtr msg) -> void { rawObcCpuUserLoad = msg->data; });
+            rawObcCpuSystemLoadSubscription = this->create_subscription<std_msgs::msg::Float64MultiArray>("/mrosuam/resources/obc/raw/cpu_system_load", 10, [this] (std_msgs::msg::Float64MultiArray::ConstSharedPtr msg) -> void { rawObcCpuSystemLoad = msg->data; });
+            averagedObcCpuUserLoadSubscription = this->create_subscription<std_msgs::msg::Float64MultiArray>("/mrosuam/resources/obc/averaged/cpu_user_load", 10, [this] (std_msgs::msg::Float64MultiArray::ConstSharedPtr msg) -> void { averagedObcCpuUserLoad = msg->data; });
+            averagedObcCpuSystemLoadSubscription = this->create_subscription<std_msgs::msg::Float64MultiArray>("/mrosuam/resources/obc/averaged/cpu_system_load", 10, [this] (std_msgs::msg::Float64MultiArray::ConstSharedPtr msg) -> void { averagedObcCpuSystemLoad = msg->data; });
+            obcMemUsedSubscription = this->create_subscription<std_msgs::msg::UInt64>("/mrosuam/resources/obc/virtual_mem_used", 10, [this] (std_msgs::msg::UInt64::ConstSharedPtr msg) -> void { obcMemUsed = msg->data; });
+            cameraImageSubscription = this->create_subscription<sensor_msgs::msg::CompressedImage>("/raspicam_node/image/compressed", 10, [this] (sensor_msgs::msg::CompressedImage::ConstSharedPtr msg) -> void { cameraImage = *msg; });
+            
+            //obcConnectionStatus.initialize(nodeHandle);
+            //cameraConnectionStatus.initialize(nodeHandle);
+            //fcuConnectionStatus.initialize(nodeHandle);
+            
+            /*
+            
+            rclcpp::Client<mavros_msgs::srv::SetMode>::SharedPtr setModeClient = guiNode.create_client<mavros_msgs::srv::SetMode>("/mavros/set_mode");
+            
+            rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr localPosePub = guiNode.create_publisher<geometry_msgs::msg::PoseStamped>("mavros/setpoint_position/local", 10);
+            
+            geometry_msgs::msg::PoseStamped pose;
+            pose.pose.position.x = 0;
+            pose.pose.position.y = 0;
+            pose.pose.position.z = 2;
+            
+            
+            for (int i = 0; i < 100; i++)
+            {
+                localPosePub->publish(pose);
+                rclcpp::sleep_for(100ms);
+            }
+            
+            
+            mavros_msgs::srv::SetMode offboardSetMode;
+            offboardSetMode.request.custom_mode = "OFFBOARD";
+            
+            while (mavrosState.get().mode != "OFFBOARD")
+            {
+                RCLCPP_INFO(guiNode.get_logger(), "Tried setting offboard mode - %s, %s response", 
+                        setModeClient.call(offboardSetMode) ? "sent" : "not sent", 
+                        offboardSetMode.response.mode_sent ? "with" : "without");
+                
+                rclcpp::sleep_for(5ms);
+            }
+            */
+            
+            
+            RCLCPP_INFO(this->get_logger(), "Starting GUI");
+            
+            if (window.setupWindow() > 0)
+                return;
+            
+            glGenTextures(1, &renderedTexture);
+            glBindTexture(GL_TEXTURE_2D, renderedTexture);
+            
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+            
+#if defined(GL_UNPACK_ROW_LENGTH) && !defined(__EMSCRIPTEN__)
+            glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+#endif
+            
+            if (renderedTexture == 0)
+            {
+                std::cout << "Rendered texture was 0!\n";
+                return;
+            }
+            
+            // Determine total amount of memory on GCS and OBC
+            
+            struct sysinfo gcsMemInfo;
+            sysinfo(&gcsMemInfo);
+            
+            gcsTotalVirtualMem = gcsMemInfo.totalram;
+            gcsTotalVirtualMem += gcsMemInfo.totalswap;
+            gcsTotalVirtualMem += gcsMemInfo.mem_unit;
+            
+            struct sysinfo obcMemInfo;
+            sysinfo(&obcMemInfo);
+            
+            obcTotalVirtualMem = obcMemInfo.totalram;
+            obcTotalVirtualMem += obcMemInfo.totalswap;
+            obcTotalVirtualMem += obcMemInfo.mem_unit;
+            
+            const GLubyte* version = glGetString(GL_VERSION);
+            std::cout << "OpenGL version: " << version << std::endl;
+            
+            timer = this->create_wall_timer(16ms, std::bind(&Gui::gui_iteration, this));
+            
+            
         }
         
+        private:
         
+        rclcpp::TimerBase::SharedPtr timer;
         
-        ROS_INFO("Starting GUI");
+        rclcpp::Subscription<mavros_msgs::msg::State>::SharedPtr stateSubscription;
+        rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr rawGcsCpuUserLoadSubscription;
+        rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr rawGcsCpuSystemLoadSubscription;
+        rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr averagedGcsCpuUserLoadSubscription;
+        rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr averagedGcsCpuSystemLoadSubscription;
+        rclcpp::Subscription<std_msgs::msg::UInt64>::SharedPtr gcsMemUsedSubscription;
+        rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr rawObcCpuUserLoadSubscription;
+        rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr rawObcCpuSystemLoadSubscription;
+        rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr averagedObcCpuUserLoadSubscription;
+        rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr averagedObcCpuSystemLoadSubscription;
+        rclcpp::Subscription<std_msgs::msg::UInt64>::SharedPtr obcMemUsedSubscription;
+        rclcpp::Subscription<sensor_msgs::msg::CompressedImage>::SharedPtr cameraImageSubscription;
         
-        if (window.setupWindow() > 0)
-            return 1;
+        AtomicVariable<mavros_msgs::msg::State> mavrosState;
+        AtomicVariable<std::vector<double>> rawGcsCpuUserLoad{std::vector<double>(4, 0.0f)};
+        AtomicVariable<std::vector<double>> rawGcsCpuSystemLoad{std::vector<double>(4, 0.0f)};
+        AtomicVariable<std::vector<double>> averagedGcsCpuUserLoad{std::vector<double>(4, 0.0f)};
+        AtomicVariable<std::vector<double>> averagedGcsCpuSystemLoad{std::vector<double>(4, 0.0f)};
+        AtomicVariable<uint64_t> gcsMemUsed;
+        AtomicVariable<std::vector<double>> rawObcCpuUserLoad{std::vector<double>(1, 0.0f)};
+        AtomicVariable<std::vector<double>> rawObcCpuSystemLoad{std::vector<double>(1, 0.0f)};
+        AtomicVariable<std::vector<double>> averagedObcCpuUserLoad{std::vector<double>(1, 0.0f)};
+        AtomicVariable<std::vector<double>> averagedObcCpuSystemLoad{std::vector<double>(1, 0.0f)};
+        AtomicVariable<uint64_t> obcMemUsed;
+        AtomicVariable<sensor_msgs::msg::CompressedImage> cameraImage;
         
+        uint64_t gcsTotalVirtualMem;
+        uint64_t obcTotalVirtualMem;
         GLuint renderedTexture;
-        glGenTextures(1, &renderedTexture);
-        glBindTexture(GL_TEXTURE_2D, renderedTexture);
         
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    
+        ImGuiWindow window;
         
-    #if defined(GL_UNPACK_ROW_LENGTH) && !defined(__EMSCRIPTEN__)
-        glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
-    #endif
+        /*
+        ROSTopicVariable<mavros_msgs::msg::State, mavros_msgs::msg::State> currentState([] (mavros_msgs::msg::State::SharedPtr state) -> mavros_msgs::msg::State { return *state; });
         
-        if (renderedTexture == 0)
+        ROSTopicVariable<std::vector<double>, std_msgs::msg::Float64MultiArray> rawGcsCpuUserLoad([] (std_msgs::msg::Float64MultiArray::ConstPtr msg) -> std::vector<double> { return msg->data; }, std::vector<double>(4));
+        ROSTopicVariable<std::vector<double>, std_msgs::msg::Float64MultiArray> rawGcsCpuSystemLoad([] (std_msgs::msg::Float64MultiArray::ConstPtr msg) -> std::vector<double> { return msg->data; }, std::vector<double>(4));
+        ROSTopicVariable<std::vector<double>, std_msgs::msg::Float64MultiArray> averagedGcsCpuUserLoad([] (std_msgs::msg::Float64MultiArray::ConstPtr msg) -> std::vector<double> { return msg->data; }, std::vector<double>(4));
+        ROSTopicVariable<std::vector<double>, std_msgs::msg::Float64MultiArray> averagedGcsCpuSystemLoad([] (std_msgs::msg::Float64MultiArray::ConstPtr msg) -> std::vector<double> { return msg->data; }, std::vector<double>(4));
+        ROSTopicVariable<uint64_t, std_msgs::msg::UInt64> gcsMemUsed([] (std_msgs::msg::UInt64::ConstPtr msg) -> uint64_t { return msg->data; });
+        ROSTopicVariable<std::vector<double>, std_msgs::msg::Float64MultiArray> rawObcCpuUserLoad([] (std_msgs::msg::Float64MultiArray::ConstPtr msg) -> std::vector<double> { return msg->data; }, std::vector<double>(1));
+        ROSTopicVariable<std::vector<double>, std_msgs::msg::Float64MultiArray> rawObcCpuSystemLoad([] (std_msgs::msg::Float64MultiArray::ConstPtr msg) -> std::vector<double> { return msg->data; }, std::vector<double>(1));
+        ROSTopicVariable<std::vector<double>, std_msgs::msg::Float64MultiArray> averagedObcCpuUserLoad([] (std_msgs::msg::Float64MultiArray::ConstPtr msg) -> std::vector<double> { return msg->data; }, std::vector<double>(1));
+        ROSTopicVariable<std::vector<double>, std_msgs::msg::Float64MultiArray> averagedObcCpuSystemLoad([] (std_msgs::msg::Float64MultiArray::ConstPtr msg) -> std::vector<double> { return msg->data; }, std::vector<double>(1));
+        ROSTopicVariable<uint64_t, std_msgs::msg::UInt64> obcMemUsed([] (std_msgs::msg::UInt64::ConstPtr msg) -> uint64_t { return msg->data; });
+        ROSTopicVariable<sensor_msgs::msg::CompressedImage, sensor_msgs::msg::CompressedImage> cameraImage([] (sensor_msgs::msg::CompressedImage::ConstPtr msg) -> sensor_msgs::msg::CompressedImage { return *msg; });
+        */
+        bool obcConnected, cameraConnected, fcuConnected;
+        
+        //ConnectionStatus<std_msgs::msg::UInt64> obcConnectionStatus("/mrosuam/resources/obc/virtual_mem_used", 1.0f);
+        //ConnectionStatus<sensor_msgs::msg::CompressedImage> cameraConnectionStatus("/raspicam_node/image/compressed", 1.0f);
+        //ConnectionStatus<mavros_msgs::msg::State> fcuConnectionStatus("/mavros/state", 1.0f);
+        
+        void gui_iteration()
         {
-            std::cout << "Rendered texture was 0!\n";
-            return 1;
-        }
-        
-        // Determine total amount of memory on GCS and OBC
-        
-        struct sysinfo gcsMemInfo;
-        sysinfo(&gcsMemInfo);
-        
-        uint64_t gcsTotalVirtualMem = gcsMemInfo.totalram;
-        gcsTotalVirtualMem += gcsMemInfo.totalswap;
-        gcsTotalVirtualMem += gcsMemInfo.mem_unit;
-        
-        struct sysinfo obcMemInfo;
-        sysinfo(&obcMemInfo);
-        
-        uint64_t obcTotalVirtualMem = obcMemInfo.totalram;
-        obcTotalVirtualMem += obcMemInfo.totalswap;
-        obcTotalVirtualMem += obcMemInfo.mem_unit;
-        
-        // Main GUI loop
-        
-        while (!window.shouldClose())
-        {
+            
+                
             float frameDurationMillis;
             
             {
@@ -162,9 +205,9 @@ namespace mrosuam::gui {
             
             window.beginFrame();
             
-            obcConnected = obcConnectionStatus.checkStatus();
-            cameraConnected = cameraConnectionStatus.checkStatus();
-            fcuConnected = fcuConnectionStatus.checkStatus();
+            //obcConnected = obcConnectionStatus.checkStatus();
+            //cameraConnected = cameraConnectionStatus.checkStatus();
+            //fcuConnected = fcuConnectionStatus.checkStatus();
             
             //ImGui::ShowDemoWindow();
             //ImPlot::ShowDemoWindow();
@@ -213,7 +256,7 @@ namespace mrosuam::gui {
             
             if (ImGui::Begin("Stats")) {
                 
-                float statsWindowWidth = ImGui::GetContentRegionAvailWidth();
+                float statsWindowWidth = ImGui::GetContentRegionAvail().x;
                 
                 int fps = 1000 / frameDurationMillis;
                 ImGui::Text("Current frame time: %f ms (%d fps)", frameDurationMillis, fps);
@@ -241,8 +284,8 @@ namespace mrosuam::gui {
                     
                     if (gcsMemUsedInt / gcsTotalVirtualMem > 0.95)
                     {
-                        ROS_INFO("GCS virtual memory in use exceeded 95%% (%lu / %lu)! Killing process.", gcsMemUsedInt, gcsTotalVirtualMem);
-                        return 1;
+                        RCLCPP_INFO(this->get_logger(), "GCS virtual memory in use exceeded 95%% (%lu / %lu)! Killing process.", gcsMemUsedInt, gcsTotalVirtualMem);
+                        return;
                     }
                     
                     static float t = 0.0f;
@@ -345,8 +388,8 @@ namespace mrosuam::gui {
                 
                     if (obcMemUsedInt / obcTotalVirtualMem > 0.95)
                     {
-                        ROS_INFO("OBC virtual memory in use exceeded 95%% (%lu / %lu)! Killing process.", obcMemUsedInt, obcTotalVirtualMem);
-                        return 1;
+                        RCLCPP_INFO(this->get_logger(), "OBC virtual memory in use exceeded 95%% (%lu / %lu)! Killing process.", obcMemUsedInt, obcTotalVirtualMem);
+                        return;
                     }
                     
                     static float t = 0.0f;
@@ -428,32 +471,42 @@ namespace mrosuam::gui {
                 ImPlot::PopStyleVar();
                 
                 ImGui::End();
-                
             }
             
             // MAVROS Window
             
             if (ImGui::Begin("MAVROS")) {
                 
-                ImGui::Text("Connected: %d", currentState.get().connected);
+                //ImGui::Text("Connected: %d", currentState.get().connected);
                 
                 ImGui::End();
             }
             
             window.endFrame();
+            
+            if (window.shouldClose())
+            {
+                RCLCPP_INFO(this->get_logger(), "Window requested close, stopping node.");
+                timer->cancel();
+                
+                window.destroyWindow();
+                rclcpp::shutdown();
+            }
+            
+            //window.destroyWindow();
+            
+            //return;
         }
-        
-        window.destroyWindow();
-        
-        spinner.stop();
-        
-        return 0;
-    }
+    };
     
 }
 
 
 int main(int argc, char** argv)
 {
-    mrosuam::gui::run(argc, argv);
+    rclcpp::init(argc, argv);
+    
+    rclcpp::spin(std::make_shared<mrosuam::gui::Gui>());
+    
+    rclcpp::shutdown();
 }

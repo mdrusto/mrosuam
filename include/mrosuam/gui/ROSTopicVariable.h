@@ -2,7 +2,7 @@
 
 #include "mrosuam/gui/AtomicVariable.h"
 
-#include <ros/ros.h>
+#include <rclcpp/rclcpp.hpp>
 
 
 namespace mrosuam::gui
@@ -15,7 +15,7 @@ namespace mrosuam::gui
         
         ROSTopicVariable(std::function<Type(typename MsgType::ConstPtr)> cb, const Type& initValue = Type()) : customCallback(cb), atomicVar(initValue)  {}
         
-        void initialize(ros::NodeHandle& nodeHandle, const std::string& topic, uint32_t queueSize)
+        void initialize(const rclcpp::Subscriber<MsgType>::SharedPtr sub)
         {
             
             auto callback = 
@@ -24,7 +24,7 @@ namespace mrosuam::gui
                     atomicVar = customCallback(msg);
                 };
             
-            subscriber = nodeHandle.subscribe<MsgType>(topic, queueSize, callback);
+            subscriber = sub;
         }
         
         Type get() { return atomicVar.get(); }
@@ -32,7 +32,7 @@ namespace mrosuam::gui
     private:
         
         AtomicVariable<Type> atomicVar;
-        ros::Subscriber subscriber;
+        rclcpp::Subscriber<MsgType>::SharedPtr subscriber;
         std::function<Type(typename MsgType::ConstPtr)> customCallback;
     };
     

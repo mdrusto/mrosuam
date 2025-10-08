@@ -2,17 +2,17 @@
 
 #include <imgui.h>
 #include <imgui_impl_glfw.h>
-#include <imgui_impl_opengl2.h>
+#include <imgui_impl_opengl3.h>
 
 #include <implot.h>
 
-#include <glad/glad.h>
+//#include <glad/glad.h>
 
 #include <GLFW/glfw3.h>
 
 #include <iostream>
 
-#pragma comment(lib, "legacy_stdio_definitions");
+//#pragma comment(lib, "legacy_stdio_definitions");
 
 namespace mrosuam::gui
 {
@@ -50,8 +50,8 @@ namespace mrosuam::gui
             glfwMakeContextCurrent(window);
             glfwSwapInterval(0);
 
-            if (!gladLoadGL())
-                return 1;
+            //if (!gladLoadGL())
+            //    return 1;
 
             IMGUI_CHECKVERSION();
 
@@ -63,7 +63,7 @@ namespace mrosuam::gui
             io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 
             ImGui_ImplGlfw_InitForOpenGL(window, true);
-            ImGui_ImplOpenGL2_Init();
+            ImGui_ImplOpenGL3_Init();
 
             ImGuiStyle& style = ImGui::GetStyle();
             style.WindowRounding = 0.0f;
@@ -76,7 +76,7 @@ namespace mrosuam::gui
         {
             glfwPollEvents();
 
-            ImGui_ImplOpenGL2_NewFrame();
+            ImGui_ImplOpenGL3_NewFrame();
             ImGui_ImplGlfw_NewFrame();
             ImGui::NewFrame();
             
@@ -109,7 +109,7 @@ namespace mrosuam::gui
             glViewport(0, 0, display_w, display_h);
             glClearColor(CLEAR_COLOUR.x * CLEAR_COLOUR.w, CLEAR_COLOUR.y * CLEAR_COLOUR.w, CLEAR_COLOUR.z * CLEAR_COLOUR.w, CLEAR_COLOUR.w);
             glClear(GL_COLOR_BUFFER_BIT);
-            ImGui_ImplOpenGL2_RenderDrawData(ImGui::GetDrawData());
+            ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
             GLFWwindow* backup_current_context = glfwGetCurrentContext();
             ImGui::UpdatePlatformWindows();
@@ -121,7 +121,7 @@ namespace mrosuam::gui
 
         void destroyWindow()
         {
-            ImGui_ImplOpenGL2_Shutdown();
+            ImGui_ImplOpenGL3_Shutdown();
             ImGui_ImplGlfw_Shutdown();
 
             ImGui::DestroyContext();
