@@ -10,13 +10,19 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
+set(BUILD_TESTING OFF)
+
 #cmake_policy(SET CMP0054 NEW)
 
 # Find which machine this is - MACHINE_OBC is true if this is the on-board computer
-message("Hostname is: $ENV{NAME}")
-if ($ENV{NAME} STREQUAL "halaena")
+set(HOST_NAME $ENV{NAME})
+if (NOT HOST_NAME)
+  cmake_host_system_information(RESULT HOST_NAME QUERY HOSTNAME)
+endif()
+message("Hostname is: ${HOST_NAME}")
+if (HOST_NAME STREQUAL "halaena")
   set(MACHINE_OBC 1)
-elseif($ENV{NAME} STREQUAL "Matthew-PC")
+elseif(HOST_NAME STREQUAL "Matthew-PC")
   set(MACHINE_OBC 0)
 else()
   message(FATAL_ERROR "Hostname wasn't halaena or Matthew-PC")
