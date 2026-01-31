@@ -1,6 +1,6 @@
 [submodule "extern/imgui"]
 	path = extern/imgui
-	url = git@github.com:mdrusto/imgui.git
+	url = git@github.com:mdrusto/imgui-linux.git
 [submodule "extern/implot"]
 	path = extern/implot
 	url = git@github.com:mdrusto/implot.git
