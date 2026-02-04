@@ -1,28 +1,24 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <launch>
 	
-	<machine name="gcs" address="Matthew-PC" default="true"/>
-	<machine name="obc" address="halaena" env-loader="~/catkin_ws/devel/env.sh"/>
+	<node pkg="mrosuam" name="gui" exec="mrosuam_gui" output="screen"/>
 	
-	<node name="gui" type="mrosuam_gui" pkg="mrosuam" machine="gcs" output="screen"/>
+	<node pkg="mrosuam" name="obc_resource_monitor" exec="mrosuam_resource_monitor" output="log"/>
 	
-	<node name="gcs_resource_monitor" type="mrosuam_resource_monitor" pkg="mrosuam" machine="gcs" output="log">
-		<param name="comp_name" value="gcs"/>
-	</node>
-	
-	<node name="obc_resource_monitor" type="mrosuam_resource_monitor" pkg="mrosuam" machine="obc" output="log">
-		<param name="comp_name" value="obc"/>
-	</node>
-	
-	<!--node name="mavros" type="mavros_node" pkg="mavros" machine="obc" output="log" respawn="false" clear_params="true" required="true">
+	<node pkg="mavros" name="mavros" exec="mavros_node" output="log" respawn="false" clear_params="true" required="true">
 		<param name="fcu_url" value="/dev/ttyAMA0:57600"/>
 		<param name="fcu_protocol" value="v2.0"/>
 		<param name="gcs_url" value=""/>
 		<param name="tgt_system" value="1"/>
 		<param name="tgt_component" value="1"/>
-	</node-->
+	</node>
 	
-	<node name="camera" type="camera_node" pkg="camera_ros" machine="obc">
+	<node pkg="camera_ros" name="camera" type="camera_node">
+		<param name="width" value="800"/>
+		<param name="height" value="600"/>
+		<param name="format" value="RGB888"/>
+		
+		<!--
 		<param name="private_topics" value="true"/>
 		
 		<param name="camera_frame_id" value="raspicam"/>
@@ -38,5 +34,6 @@
 		<param name="framerate" value="30"/>
 		<param name="exposure_mode" value="antishake"/>
 		<param name="shutter_speed" value="0"/>
+		-->
 	</node>
 </launch>
