@@ -1,8 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <launch>
 	
-	<node pkg="mrosuam" name="gui" exec="mrosuam_gui" output="screen"/>
-	
 	<node pkg="mrosuam" name="obc_resource_monitor" exec="mrosuam_resource_monitor" output="log"/>
 	
 	<node pkg="mavros" name="mavros" exec="mavros_node" output="log" respawn="false">
